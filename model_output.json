@@ -1,0 +1,98 @@
+{
+  "img_001": {
+    "base_caption": "The image shows a bowl of chicken tikka masala on a wooden cutting board, with coriander leaves scattered around it. The bowl is filled with a creamy, red-orange curry, and there is a small bowl of spices on the left side of the image.",
+    "final_caption": "The image shows a bowl of chicken tikka masala on a wooden cutting board, with coriander leaves scattered around it. The bowl is filled with a creamy, red-orange curry, and there is a small bowl of spices on the left side of the image.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_002": {
+    "base_caption": "The image shows a white plate topped with cauliflower and roti, accompanied by a bowl of sauce. The cauliflower is cooked to perfection, with a golden-brown color and a crispy texture. The roti is a traditional Indian dish, made with roti and other ingredients. The sauce is a creamy white color, adding a pop of color to the dish.",
+    "final_caption": "The image shows a white plate topped with cauliflower and roti, accompanied by a bowl of sauce. The cauliflower is cooked to perfection, with a golden-brown color and a crispy texture. The roti is a traditional Indian dish, made with roti and other ingredients. The sauce is a creamy white color, adding a pop of color to the dish.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_003": {
+    "base_caption": "The image shows a bowl filled with lemons sitting on top of a table, with a blurred background. The lemons are a bright yellow color, and the bowl is a light brown color.",
+    "final_caption": "The image shows a bowl filled with lemons sitting on top of a table, with a blurred background. The lemons are a bright yellow color, and the bowl is a light brown color.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_004": {
+    "base_caption": "The image shows a white plate topped with naan bread and a bowl of chickpea curry, accompanied by slices of lemon, onions, and green chilies. The plate is placed on a white surface, giving the image a clean and inviting look.",
+    "final_caption": "The image shows a white plate topped with naan bread and a bowl of chickpea curry, accompanied by slices of lemon, onions, and green chilies. The plate is placed on a white surface, giving the image a clean and inviting look.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_005": {
+    "base_caption": "The image shows a person holding a black plate topped with a piece of cake covered in powdered sugar and cherries. The plate is sitting on a platform, and the person's hand is visible on the right side of the image.",
+    "final_caption": "The image shows a person holding a black plate topped with a piece of cake covered in powdered sugar and cherries. The plate is sitting on a platform, and the person's hand is visible on the right side of the image.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_006": {
+    "base_caption": "The image shows two plates of chicken biryaa, a traditional Indian dish, on a table with a fork beside them. The plate on the left is filled with the fragrant, yellow-brown rice, and the chicken is cooked to perfection, with a golden-brown color and a crispy texture. The fork is placed beside the plate, ready to be used to enjoy the delicious meal.",
+    "final_caption": "The image shows two plates of chicken biryaa, a traditional Indian dish, on a table with a fork beside them. The plate on the left is filled with the fragrant, yellow-brown rice, and the chicken is cooked to perfection, with a golden-brown color and a crispy texture. The fork is placed beside the plate, ready to be used to enjoy the delicious meal.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_007": {
+    "base_caption": "The image shows a white bowl filled with okra, a traditional Indian dish, on top of a black table. The okra is cooked to perfection, with a golden-brown color and a crispy texture. The sauce is a deep red color, and the okra looks freshly cooked and ready to be enjoyed.",
+    "final_caption": "The image shows a white bowl filled with okra, a traditional Indian dish, on top of a black table. The okra is cooked to perfection, with a golden-brown color and a crispy texture. The sauce is a deep red color, and the okra looks freshly cooked and ready to be enjoyed.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_008": {
+    "base_caption": "The image shows a white plate topped with four crab cakes and a bowl of sauce. The crab cakes are golden-brown in color and appear to be freshly cooked. The sauce in the bowl is a deep red color and looks like it would be a delicious accompaniment to the crab cakes.",
+    "final_caption": "The image shows a white plate topped with four crab cakes and a bowl of sauce. The crab cakes are golden-brown in color and appear to be freshly cooked. The sauce in the bowl is a deep red color and looks like it would be a delicious accompaniment to the crab cakes.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_009": {
+    "base_caption": "The image shows a wooden table with a basket filled with three flatbreads sitting on top of it. The basket is made of wood and the flatbread is a golden-brown color. The table is a warm brown color and the basket is woven with a light brown material.",
+    "final_caption": "The image shows a wooden table with a basket filled with three flatbreads sitting on top of it. The basket is made of wood and the flatbread is a golden-brown color. The table is a warm brown color and the basket is woven with a light brown material.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_010": {
+    "base_caption": "The image shows four glasses filled with a purple smoothie topped with almonds, sitting on a table with spoons and a cloth beside them. At the bottom of the image, there is some text.",
+    "final_caption": "The image shows four glasses filled with a purple smoothie topped with almonds, sitting on a table with spoons and a cloth beside them. At the bottom of the image, there is some text.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_011": {
+    "base_caption": "The image shows a bowl filled with a creamy, white liquid, likely panna cotta, sitting on top of a table. The bowl is filled to the brim with the creamy, light-colored soup, and the table is covered with a cloth.",
+    "final_caption": "The image shows a bowl filled with a creamy, white liquid, likely panna cotta, sitting on top of a table. The bowl is filled to the brim with the creamy, light-colored soup, and the table is covered with a cloth.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_012": {
+    "base_caption": "The image shows a group of people riding motorcycles down a dirt road, with a van and a car in the foreground. On the left side of the image there is a shed, and in the background there are trees, buildings, electric poles with wires, and a clear blue sky.",
+    "final_caption": "The image shows a group of people riding motorcycles down a dirt road, with a van and a car in the foreground. On the left side of the image there is a shed, and in the background there are trees, buildings, electric poles with wires, and a clear blue sky.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_013": {
+    "base_caption": "The image shows a group of people riding motorcycles down a street lined with tall buildings, trees, and hoardings. The sky in the background is filled with clouds.",
+    "final_caption": "The image shows a group of people riding motorcycles down a street lined with tall buildings, trees, and hoardings. The sky in the background is filled with clouds.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_014": {
+    "base_caption": "The image shows a woman carrying a large pot on her head. She is standing in front of a house, with a wooden stick to her right.",
+    "final_caption": "The image shows a woman carrying a large pot on her head. She is standing in front of a house, with a wooden stick to her right.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_015": {
+    "base_caption": "The image shows a group of people standing in front of a brick building, which appears to be a mausoleum, surrounded by lush green grass, plants, and trees. The sky in the background is filled with white, fluffy clouds.",
+    "final_caption": "The image shows a group of people standing in front of a brick building, which appears to be a mausoleum, surrounded by lush green grass, plants, and trees. The sky in the background is filled with white, fluffy clouds.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  },
+  "img_016": {
+    "base_caption": "The image shows a man sitting in front of a fish market, surrounded by a group of people. He is wearing a white shirt and gray pants, and is holding a basket of fish in his hands. Behind him, there are several blue baskets filled with fish, and in the background, there is a building.",
+    "final_caption": "The image shows a man sitting in front of a fish market, surrounded by a group of people. He is wearing a white shirt and gray pants, and is holding a basket of fish in his hands. Behind him, there are several blue baskets filled with fish, and in the background, there is a building.",
+    "mode": "generic",
+    "esn_confidence": 0.4
+  }
+}

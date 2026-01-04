@@ -1,0 +1,145 @@
+{
+  "img_001": {
+    "scene_type": "food",
+    "primary_objects": ["chicken curry"],
+    "cultural_context": "North Indian cuisine",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["food_traditional"],
+    "notes": "Rich gravy-based chicken dish commonly associated with Indian cuisine."
+  },
+
+  "img_002": {
+    "scene_type": "food",
+    "primary_objects": ["cauliflower sabzi", "flatbread"],
+    "cultural_context": "Indian home-style meal",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["daily_life", "food_traditional"],
+    "notes": "Dry vegetable preparation typically eaten with roti."
+  },
+
+  "img_003": {
+    "scene_type": "food",
+    "primary_objects": ["laddoo"],
+    "cultural_context": "Indian sweets",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["festival_context", "food_traditional"],
+    "notes": "Round sweets commonly prepared during festivals."
+  },
+
+  "img_004": {
+    "scene_type": "food",
+    "primary_objects": ["puri", "chole"],
+    "cultural_context": "North Indian dish",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["food_traditional", "daily_life"],
+    "notes": "Deep-fried bread served with chickpea curry."
+  },
+
+  "img_005": {
+    "scene_type": "food",
+    "primary_objects": ["milk-based sweet"],
+    "cultural_context": "Indian dessert",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["festival_context"],
+    "notes": "Decorated milk-based sweet often made for celebrations."
+  },
+
+  "img_006": {
+    "scene_type": "food",
+    "primary_objects": ["biryani", "raita"],
+    "cultural_context": "Indian festive cuisine",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["food_traditional", "festival_context"],
+    "notes": "Layered rice dish served with yogurt-based side."
+  },
+
+  "img_007": {
+    "scene_type": "food",
+    "primary_objects": ["okra curry"],
+    "cultural_context": "Indian vegetarian dish",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["daily_life"],
+    "notes": "Vegetable curry prepared with spices."
+  },
+
+  "img_008": {
+    "scene_type": "food",
+    "primary_objects": ["cutlets", "chutney"],
+    "cultural_context": "Indian snack",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["daily_life"],
+    "notes": "Pan-fried snacks served with condiment."
+  },
+
+  "img_009": {
+    "scene_type": "food",
+    "primary_objects": ["chapati"],
+    "cultural_context": "Indian staple food",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["daily_life"],
+    "notes": "Flatbread commonly eaten across India."
+  },
+
+  "img_010": {
+    "scene_type": "food",
+    "primary_objects": ["dessert bowls"],
+    "cultural_context": "Indian dessert presentation",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["festival_context"],
+    "notes": "Milk-based dessert garnished with nuts and petals."
+  },
+
+  "img_011": {
+    "scene_type": "food",
+    "primary_objects": ["kheer"],
+    "cultural_context": "Indian dessert",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["festival_context"],
+    "notes": "Rice pudding garnished with nuts."
+  },
+
+  "img_012": {
+    "scene_type": "street",
+    "primary_objects": ["truck", "motorcycles"],
+    "cultural_context": "Indian rural road",
+    "is_culturally_specific": false,
+    "allowed_cultural_modes": ["daily_life"],
+    "notes": "Unpaved road with mixed traffic."
+  },
+
+  "img_013": {
+    "scene_type": "street",
+    "primary_objects": ["auto rickshaws", "traffic"],
+    "cultural_context": "Indian urban traffic",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["daily_life"],
+    "notes": "Busy city road with auto-rickshaws."
+  },
+
+  "img_014": {
+    "scene_type": "people",
+    "primary_objects": ["woman carrying water pot"],
+    "cultural_context": "Rural Indian daily life",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["daily_life"],
+    "notes": "Traditional method of carrying water."
+  },
+
+  "img_015": {
+    "scene_type": "heritage",
+    "primary_objects": ["stupa"],
+    "cultural_context": "Indian historical monument",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["generic"],
+    "notes": "Ancient Buddhist architectural structure."
+  },
+
+  "img_016": {
+    "scene_type": "market",
+    "primary_objects": ["fish vendor", "market stall"],
+    "cultural_context": "Indian local market",
+    "is_culturally_specific": true,
+    "allowed_cultural_modes": ["daily_life"],
+    "notes": "Traditional fish market scene."
+  }
+}
