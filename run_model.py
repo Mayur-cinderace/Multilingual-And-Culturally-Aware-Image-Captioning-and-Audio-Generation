@@ -2,7 +2,7 @@
 import json
 import os
 from cpu_cultural_enrich import generate_base_caption
-from esn_cultural_context import CulturalContextController
+from cultural_context import CulturalContextController
 
 IMAGE_DIR = "eval"
 OUT_FILE = "model_output.json"
