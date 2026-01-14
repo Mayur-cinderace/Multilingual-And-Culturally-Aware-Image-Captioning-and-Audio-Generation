@@ -848,6 +848,4 @@ with gr.Blocks(
                 outputs=similar_gallery
             )
 
-# Important: share=True creates public link (good for testing / demo)
-# For local-only → keep share=False or remove the argument
-demo.launch(server_name="127.0.0.1", server_port=7860, share=False, show_error=True)
+demo.launch(server_name="0.0.0.0", server_port=7860)
