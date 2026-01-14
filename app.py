@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 import requests
 import datetime
+import numpy as np
 
 load_dotenv()
 
@@ -62,7 +63,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''
-        CREATE TABLE IF NOT EXISTS cultural_cues (
+        CREATE TABLE IF NOT EXISTS cultura (
             id                       INTEGER PRIMARY KEY AUTOINCREMENT,
             mode                     TEXT NOT NULL,
             confidence               REAL DEFAULT 0.0,
@@ -101,26 +102,53 @@ from hashtag_generator import generate_hashtags
 from translation_refiner import naturalize_translation
 
 training_samples = [
+    # food_traditional  ── 10 examples
     ("A bowl of spicy curry garnished with fresh herbs.", "food_traditional"),
     ("Aromatic masala dish served in a traditional bowl.", "food_traditional"),
     ("Gravy with spices and vegetables.", "food_traditional"),
     ("Spiced rice garnished with nuts.", "food_traditional"),
     ("Traditional meal with rich flavors.", "food_traditional"),
+    ("Creamy paneer butter masala with garlic naan.", "food_traditional"),
+    ("Dal tadka served with jeera rice.", "food_traditional"),
+    ("Vegetable korma in coconut gravy.", "food_traditional"),
+    ("Chicken tikka masala with butter naan.", "food_traditional"),
+    ("Aloo gobi dry sabzi with roti.", "food_traditional"),
+
+    # festival_context  ── 8 examples
     ("People celebrating with lights and sweets during festival.", "festival_context"),
     ("Ritual offerings in a celebration.", "festival_context"),
     ("Festival gathering with colorful decorations.", "festival_context"),
     ("Traditional dance during celebratory event.", "festival_context"),
-    ("Ceremony with bright colors and music.", "festival_context"),
+    ("Diwali diyas and rangoli at home entrance.", "festival_context"),
+    ("Holi colors thrown in joyful gathering.", "festival_context"),
+    ("Ganesh idol decorated with flowers and modak.", "festival_context"),
+    ("Navratri garba dance in traditional clothes.", "festival_context"),
+
+    # daily_life  ── 4 examples (smaller because it's closer to generic)
     ("Family having a simple home meal.", "daily_life"),
     ("Daily routine with breakfast in bowl.", "daily_life"),
     ("Home-cooked dish served to family.", "daily_life"),
     ("Everyday gathering around the table.", "daily_life"),
-    ("Routine meal in a casual setting.", "daily_life"),
+
+    # generic  ── 18 examples  (≈45%)
     ("A landscape with mountains and sky.", "generic"),
     ("Abstract art piece on wall.", "generic"),
     ("City street with cars.", "generic"),
     ("Book on a table.", "generic"),
-    ("Random object in room.", "generic")
+    ("Random object in room.", "generic"),
+    ("Sunset over calm ocean.", "generic"),
+    ("Modern office building exterior.", "generic"),
+    ("Person walking in park.", "generic"),
+    ("Highway traffic at dusk.", "generic"),
+    ("Clouds in blue sky.", "generic"),
+    ("Cat sleeping on windowsill.", "generic"),
+    ("Laptop and notebook on desk.", "generic"),
+    ("Train passing through countryside.", "generic"),
+    ("Flower pot on balcony.", "generic"),
+    ("Snow-covered trees in winter.", "generic"),
+    ("Empty beach at sunrise.", "generic"),
+    ("Street lamp at night.", "generic"),
+    ("Bicycle parked near wall.", "generic"),
 ]
 
 cultural_manager = CulturalContextManager()
@@ -147,6 +175,7 @@ def light_cultural_extraction(caption: str, mode: str, confidence: float) -> dic
     system = """
 You are a precise cultural entity extractor for Indian contexts.
 Only return valid JSON object. Do NOT explain. Do NOT add extra text.
+For a given caption, give me the closest festival possible. Example Biryani for Eid.
 Return empty strings if nothing is clearly indicated.
 
 Example output:
@@ -187,7 +216,7 @@ def get_cultural_facts(mode: str) -> str:
     # Using new schema columns
     c.execute("""
         SELECT detected_dish, short_description, detected_region_hint, detected_festival 
-        FROM cultural_cues 
+        FROM cultura 
         WHERE mode = ? AND detected_dish != ''
         ORDER BY added_at DESC LIMIT 12
     """, (mode,))
@@ -206,7 +235,7 @@ def add_cultural_entry(mode, name, description, region, festival, story, recipe_
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute('''
-            INSERT INTO cultural_cues (
+            INSERT INTO cultura (
                 mode, detected_dish, short_description, detected_region_hint, detected_festival
             ) VALUES (?, ?, ?, ?, ?)
         ''', (mode, name, description, region, festival))
@@ -225,6 +254,51 @@ def visually_ambiguous_food(caption: str) -> bool:
     return any(w in c for w in ["round", "smooth", "plain", "boiled"]) and \
            any(w in c for w in ["plate", "bowl", "served"])
 
+def get_esn_explanation_and_injection(caption: str, mode: str, conf: float, top_k=4) -> tuple[str, str]:
+    """
+    Returns:
+    - short explanation line (e.g. "ESN detected strong festival + thali signals")
+    - modified sentence piece to inject (or "" if weak)
+    """
+    if conf < 0.52:
+        return "", ""
+
+    feats = cultural_manager.esn.extract_features(caption)  # assuming you can access it
+    feature_names = [
+        "caption_length", "spice_level", "ritual_score", "daily_score", "heritage",
+        "color_vivid", "texture_words", "serving_style", "has_thali", "has_festival",
+        "has_sweet", "has_rice", "veg_focus", "meat_focus", "has_dessert", "has_beverage",
+        "has_offering", "has_decoration", "has_people", "has_utensil",
+        "adj_ratio", "uniq_ratio", "sentiment_pos"
+    ] + ["bias"] * 5  # last few are constants
+
+    # Get top indices (ignore last 5 bias terms)
+    top_indices = np.argsort(feats[:-5])[::-1][:top_k]
+    top_pairs = [(feature_names[i], round(float(feats[i]), 2)) for i in top_indices if feats[i] > 0.35]
+
+    if not top_pairs:
+        return "", ""
+
+    # Build explanation
+    strongest = top_pairs[0][0]
+    explanation = f"ESN activated mainly by: " + ", ".join(f"{name} ({val})" for name, val in top_pairs[:3])
+
+    # Decide what stylistic injection to make
+    injection = ""
+    if "has_festival" in strongest or any("festival" in n for n, v in top_pairs if v > 1.2):
+        injection = "festive "
+    elif "has_thali" in strongest or feats[feature_names.index("has_thali")] > 1.4:
+        injection = "traditional thali of "
+    elif "spice_level" in strongest and top_pairs[0][1] > 1.1:
+        injection = "richly spiced "
+    elif "has_offering" in strongest or "ritual" in strongest:
+        injection = "ceremonial "
+    elif "heritage" in strongest and top_pairs[0][1] > 0.9:
+        injection = "time-honored "
+    elif "daily_score" in strongest and top_pairs[0][1] > 0.9:
+        injection = "comforting homemade "
+
+    return explanation, injection
 
 def search_similar_images(caption: str, num_results=8):
     PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
@@ -252,45 +326,49 @@ def search_similar_images(caption: str, num_results=8):
 # ------------------------------------------------------------
 def run_caption(image, language, use_esn, compare_models=False):
     if image is None:
-        return "", "", "", None, None, None, "", "", None  # 9 outputs now
+        return "", "", "", None, None, None, "", "", None
 
     image_path = "temp.jpg"
     image.save(image_path)
-
     base_caption = generate_base_caption(image_path).strip()
 
     # ── Cultural classification ────────────────────────────────
-    cultural_line = ""
-    comparison_text = ""
-    reasoning_trace = ""
-    mode = "generic"
-    confidence = 0.0
-    results = {  # default fallback
-        "esn": {"mode": "generic", "confidence": 0.0},
-        "gru": {"mode": "generic", "confidence": 0.0},
-        "combined_mode": "generic"
-    }
+    results = cultural_manager.predict(base_caption)
 
+    mode = results["combined_mode"]
+    # Use ESN confidence for explanation/injection, overall conf for threshold
+    esn_conf = results["esn"]["confidence"]
+    overall_conf = max(results["esn"]["confidence"], results["gru"]["confidence"])
+
+    esn_explain, injection_prefix = "", ""
     if use_esn:
-        results = cultural_manager.predict(base_caption)
-        
-        if compare_models:
-            comparison_text = (
-                f"ESN: {results['esn']['mode']} ({results['esn']['confidence']:.2f}) | "
-                f"GRU: {results['gru']['mode']} ({results['gru']['confidence']:.2f})"
-            )
-        else:
-            comparison_text = ""
+        esn_explain, injection_prefix = get_esn_explanation_and_injection(
+            base_caption, mode, esn_conf
+        )
 
-        mode = results["esn"]["mode"]
-        confidence = results["esn"]["confidence"]
+    cultural_suffix = CULTURAL_TEMPLATES.get(mode, "")
+    cultural_line = cultural_suffix   # ← define it here
 
-        if confidence >= CULTURAL_CONFIDENCE_THRESHOLD:
-            cultural_line = CULTURAL_TEMPLATES.get(mode, "")
-            if visually_ambiguous_food(base_caption):
-                cultural_line = "Items like this are often seen in traditional sweets or dishes, especially in cultural contexts."
+    # ── Build final English caption with real injection ────────
+    if injection_prefix and overall_conf >= CULTURAL_CONFIDENCE_THRESHOLD:
+        final_caption_en = f"{injection_prefix}{base_caption.rstrip('.')} {cultural_suffix}".strip()
+        cultural_note = f"\n\n**Cultural enhancement by ESN**: {esn_explain}"
+    else:
+        final_caption_en = (base_caption.rstrip(".") + (". " + cultural_suffix if cultural_suffix else "")).strip()
+        cultural_note = ""
 
-    final_caption_en = (base_caption.rstrip(".") + ". " + cultural_line).strip() if cultural_line else base_caption
+    # Comparison / debug text
+    if compare_models:
+        comparison_text = (
+            f"ESN: {results['esn']['mode']} ({results['esn']['confidence']:.2f})   "
+            f"GRU: {results['gru']['mode']} ({results['gru']['confidence']:.2f})\n"
+            f"{esn_explain if esn_explain else 'ESN: weak activation'}"
+        )
+    else:
+        comparison_text = esn_explain if esn_explain else ""
+
+    # For reasoning_out — can be same as cultural_note or more detailed later
+    reasoning_trace = cultural_note if cultural_note else "No strong cultural signals detected."
 
     # ── Translate ───────────────────────────────────────────────
     translated = translate_to_language(final_caption_en, language)
@@ -300,20 +378,20 @@ def run_caption(image, language, use_esn, compare_models=False):
     hashtags_str = generate_hashtags(final_caption_en, min_tags=2)
 
     # ── Cultural entity extraction ──────────────────────────────
-    entities = light_cultural_extraction(final_caption_en, mode, confidence)
+    entities = light_cultural_extraction(final_caption_en, mode, overall_conf)
 
     # ── Auto-save to DB ─────────────────────────────────────────
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute('''
-            INSERT INTO cultural_cues (
+            INSERT INTO cultura (
                 mode, confidence, english_caption, local_caption, hashtags,
                 detected_dish, detected_festival, detected_region_hint, short_description
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             mode,
-            round(confidence, 3),
+            round(overall_conf, 3),
             final_caption_en,
             local_caption,
             hashtags_str,
@@ -337,17 +415,17 @@ def run_caption(image, language, use_esn, compare_models=False):
     except Exception as e:
         print(f"TTS failed: {e}")
 
-    # ── Return all 9 values ─────────────────────────────────────
+    # ── Return 9 values ─────────────────────────────────────────
     return (
-        final_caption_en,                           # out_en
-        local_caption,                              # out_local
-        hashtags_str,                               # out_tags
-        audio_file,                                 # audio
-        str(image_path),                            # image_state
-        final_caption_en + (" " + cultural_line if cultural_line else ""),  # context_state
-        comparison_text,                            # comparison_out
-        reasoning_trace,                            # reasoning_out
-        results                                     # prediction_state (the dict!)
+        final_caption_en,       # 1
+        local_caption,          # 2
+        hashtags_str,           # 3
+        audio_file,             # 4
+        str(image_path),        # 5
+        final_caption_en + (" " + cultural_line if cultural_line else ""),  # 6 context_state
+        comparison_text,        # 7
+        reasoning_trace,        # 8 ← now meaningful
+        results                 # 9
     )
 
 
@@ -456,7 +534,7 @@ def generate_heritage_graph(context, mode):
     c = conn.cursor()
     c.execute("""
         SELECT detected_dish, detected_festival, detected_region_hint
-        FROM cultural_cues
+        FROM cultura
         WHERE mode = ?
         ORDER BY added_at DESC
         LIMIT 30

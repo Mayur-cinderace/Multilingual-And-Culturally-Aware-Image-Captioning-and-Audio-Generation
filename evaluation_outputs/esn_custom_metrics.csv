@@ -1,0 +1,7 @@
+Metric,Score
+cultural_precision,0.0082
+hallucination_score,0.7322
+suppression_accuracy,0.2678
+human_appropriateness,0.1941
+esn_usefulness,0.0082
+composite_score,0.1529

@@ -1,0 +1,10 @@
+Captioning Metrics Summary
+==================================================
+BLEU-1: 0.5494
+BLEU-2: 0.4439
+BLEU-3: 0.3606
+BLEU-4: 0.2889
+METEOR:     0.5926
+ROUGE-L:    0.6733
+BERTScore:  0.9386
+CIDEr:      2.8303
