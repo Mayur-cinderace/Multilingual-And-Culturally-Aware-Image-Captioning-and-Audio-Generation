@@ -1,4 +1,4 @@
-# app.py – Cultural AI Explorer with SQLite DB + Ollama (local)
+# app.py – Cultural AI Explorer with SQLite DB + Ollama (ENHANCED UI)
 import gradio as gr
 from gtts import gTTS
 from pathlib import Path
@@ -14,11 +14,18 @@ import requests
 import datetime
 from datetime import datetime, timezone
 import numpy as np
-from esn_gru_visualization import (
-    animate_esn_reservoir,
-    compare_esn_gru_3d,
-    counterfactual_drift_animation
-)
+
+# Import visualization if available
+try:
+    from esn_gru_visualization import (
+        animate_esn_reservoir,
+        compare_esn_gru_3d,
+        counterfactual_drift_animation
+    )
+    VISUALIZATIONS_AVAILABLE = True
+except ImportError:
+    VISUALIZATIONS_AVAILABLE = False
+    print("[Warning] esn_gru_visualization not available - 3D visualizations disabled")
 
 load_dotenv()
 
@@ -26,7 +33,7 @@ load_dotenv()
 #   LOCAL OLLAMA CLIENT
 # ────────────────────────────────────────────────
 OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "llama3.2:3b"  # change to your preferred model: qwen2.5, llama3.2, etc.
+OLLAMA_MODEL = "llama3.2:3b"
 
 def ollama_generate(prompt, system="", temperature=0.7, max_tokens=300):
     messages = []
@@ -77,11 +84,8 @@ def init_db():
             english_caption TEXT,
             local_caption TEXT,
             hashtags TEXT,
-
-            -- NEW: schema-less signal storage
-            signal_vector TEXT,          -- JSON
-            signal_summary TEXT,         -- short human-readable summary
-
+            signal_vector TEXT,
+            signal_summary TEXT,
             added_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -112,6 +116,25 @@ from cultural_context import CulturalContextManager
 from hashtag_generator import generate_hashtags
 from translation_refiner import naturalize_translation
 
+# ── IMPORT ENHANCED MODULES ──
+from trust_safety_enhanced import CulturalTrustAnalyzer, ModelBrainAnalyzer
+from cultural_analysis_enhanced import (
+    CulturalSignalAnalyzer,
+    ModelDisagreementAnalyzer,
+    CulturalSurpriseDetector,
+    CulturalSilenceDetector,
+    CounterfactualFrameAnalyzer
+)
+
+# ── INITIALIZE ANALYZERS ──
+trust_analyzer = CulturalTrustAnalyzer()
+brain_analyzer = ModelBrainAnalyzer()
+signal_analyzer = CulturalSignalAnalyzer()
+disagreement_analyzer = ModelDisagreementAnalyzer()
+surprise_detector = CulturalSurpriseDetector()
+silence_detector = CulturalSilenceDetector()
+counterfactual_analyzer = CounterfactualFrameAnalyzer()
+
 training_samples = [
     # food_traditional  ── 10 examples
     ("A bowl of spicy curry garnished with fresh herbs.", "food_traditional"),
@@ -135,13 +158,13 @@ training_samples = [
     ("Ganesh idol decorated with flowers and modak.", "festival_context"),
     ("Navratri garba dance in traditional clothes.", "festival_context"),
 
-    # daily_life  ── 4 examples (smaller because it's closer to generic)
+    # daily_life  ── 4 examples
     ("Family having a simple home meal.", "daily_life"),
     ("Daily routine with breakfast in bowl.", "daily_life"),
     ("Home-cooked dish served to family.", "daily_life"),
     ("Everyday gathering around the table.", "daily_life"),
 
-    # generic  ── 18 examples  (≈45%)
+    # generic  ── 18 examples
     ("A landscape with mountains and sky.", "generic"),
     ("Abstract art piece on wall.", "generic"),
     ("City street with cars.", "generic"),
@@ -187,17 +210,14 @@ def augment_samples(samples):
     for caption, mode in samples:
         augmented.append((caption, mode))
 
-        # light paraphrases
         for t in templates:
             augmented.append((t.format(caption.lower()), mode))
 
-        # noisy / partial versions
         words = caption.split()
         if len(words) > 5:
             truncated = " ".join(words[:len(words)//2])
             augmented.append((truncated, mode))
 
-        # ambiguity injection
         augmented.append((caption + noise_suffixes[np.random.randint(len(noise_suffixes))], mode))
 
     return augmented
@@ -207,14 +227,26 @@ cultural_manager = CulturalContextManager()
 augmented_samples = augment_samples(training_samples)
 cultural_manager.train(augmented_samples)
 
-
 CULTURAL_CONFIDENCE_THRESHOLD = 0.55
 
+# ── IMPROVED CULTURAL TEMPLATES ──
 CULTURAL_TEMPLATES = {
-    "food_traditional": "This reflects traditional cooking styles, often featuring rich spices and shared meals.",
-    "festival_context": "Such scenes are common in cultural festivals and communal celebrations.",
-    "daily_life": "This is typically part of everyday routines and family interactions.",
-    "generic": ""
+    "food_traditional": {
+        "prefix": "traditional ",
+        "suffix": " This reflects regional cooking traditions with distinctive spice blends and serving styles."
+    },
+    "festival_context": {
+        "prefix": "festive ",
+        "suffix": " Such scenes are central to cultural celebrations and communal gatherings."
+    },
+    "daily_life": {
+        "prefix": "everyday ",
+        "suffix": " This captures familiar routines and family moments."
+    },
+    "generic": {
+        "prefix": "",
+        "suffix": ""
+    }
 }
 
 ESN_FEATURE_NAMES = [
@@ -241,9 +273,7 @@ COUNTERFACTUAL_FRAMES = {
     }
 }
 
-
-# ── Temporal decay configuration ─────────────────────────────
-TEMPORAL_DECAY_LAMBDA = 0.12   # higher = faster forgetting
+TEMPORAL_DECAY_LAMBDA = 0.12
 
 
 def extract_signal_vector(caption: str) -> dict:
@@ -269,73 +299,70 @@ def summarize_signals(signal_vec: dict) -> str:
     return ", ".join(active) if active else "No dominant cultural signals"
 
 def counterfactual_from_vector(signal_vector: dict, frame: str) -> dict:
-    """
-    Apply counterfactual cultural frame directly on stored signal vector
-    (no re-captioning, no re-vision noise).
-    """
-
+    """Use the enhanced counterfactual analyzer"""
     if not signal_vector:
         return {"error": "No cultural signal available yet."}
 
     modifiers = COUNTERFACTUAL_FRAMES.get(frame, {})
-    adjusted = {}
-
-    for k, v in signal_vector.items():
-        adjusted[k] = round(
-            min(1.0, v * modifiers.get(k, 1.0)), 3
-        )
-
-    dominant = sorted(adjusted.items(), key=lambda x: -x[1])[:3]
-
-    return {
-        "frame": frame,
-        "original_signals": signal_vector,
-        "adjusted_signals": adjusted,
-        "dominant_dimensions": dominant,
-        "interpretation": (
-            f"Under the '{frame}' frame, cultural emphasis shifts toward "
-            f"{', '.join(k for k, _ in dominant)}."
-        )
-    }
+    return counterfactual_analyzer.analyze_shift(signal_vector, frame, modifiers)
 
 
 def build_cultural_signal_plot(caption: str):
-    feats = cultural_manager.esn.extract_features(caption)
-
-    indices = [1, 2, 3, 7, 9, 11, 18]
-    labels = [ESN_FEATURE_NAMES[i] for i in indices]
-    values = [float(feats[i]) for i in indices]
-
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.barh(labels, values, color="#f4a261")
+    """Enhanced with signal analyzer"""
+    analysis = signal_analyzer.analyze_signal_strength(caption, cultural_manager.esn)
+    
+    dimensions = analysis.get("dimensions", {})
+    if not dimensions:
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.text(0.5, 0.5, "No cultural signals detected", ha="center", va="center")
+        ax.axis("off")
+        return fig
+    
+    labels = list(dimensions.keys())
+    values = [d["strength"] for d in dimensions.values()]
+    levels = [d["level"] for d in dimensions.values()]
+    
+    # Color code by level
+    colors = []
+    for level in levels:
+        if level == "Strong":
+            colors.append("#2a9d8f")
+        elif level == "Moderate":
+            colors.append("#f4a261")
+        else:
+            colors.append("#e63946")
+    
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.barh(labels, values, color=colors)
     ax.set_xlabel("Activation Strength")
-    ax.set_title("Cultural Signal Strength (ESN)")
+    ax.set_title("Cultural Signal Strength Analysis")
+    ax.set_xlim(0, 1.0)
+    
+    # Add legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='#2a9d8f', label='Strong'),
+        Patch(facecolor='#f4a261', label='Moderate'),
+        Patch(facecolor='#e63946', label='Weak')
+    ]
+    ax.legend(handles=legend_elements, loc='lower right')
+    
     plt.tight_layout()
     return fig
 
 def build_cultural_tag_cloud(caption: str):
-    feats = cultural_manager.esn.extract_features(caption)
-
-    tags = []
-    for name, idx in {
-        "People present": 18,
-        "Ritual cues": 2,
-        "Daily activity": 3,
-        "Heritage cues": 4,
-        "Object focus": 7,
-        "Festival context": 9,
-    }.items():
-        if feats[idx] >= 0.65:
-            tags.append(name)
-
-    return " • ".join(tags) if tags else "No dominant cultural tags detected."
+    """Enhanced with signal analyzer"""
+    analysis = signal_analyzer.analyze_signal_strength(caption, cultural_manager.esn)
+    
+    dominant_signals = analysis.get("dominant_signals", [])
+    if not dominant_signals:
+        return "No dominant cultural tags detected."
+    
+    tags = [f"{s['name']} ({s['strength']:.2f})" for s in dominant_signals]
+    return " • ".join(tags)
 
 
 def build_cultural_index(signal_vector: dict) -> dict:
-    """
-    Produces a normalized archival index usable for museums/newsrooms.
-    Values are clamped to [0,1].
-    """
     index = {}
     for k, v in signal_vector.items():
         index[k] = round(min(1.0, max(0.0, float(v))), 3)
@@ -347,58 +374,14 @@ def extract_mode_from_prediction(pred):
     return pred.get("combined_mode", "generic")
 
 def cultural_entropy(features: np.ndarray, eps=1e-9) -> float:
-    """
-    Measures dispersion of cultural signals.
-    High entropy = no dominant cultural interpretation.
-    """
     x = np.abs(features.astype(float))
     x = x / (np.sum(x) + eps)
     entropy = -np.sum(x * np.log(x + eps))
     return float(entropy)
 
 def detect_cultural_surprise(caption: str, prediction: dict) -> dict:
-    """
-    Detects violation of learned cultural expectations.
-    """
-
-    feats = cultural_manager.esn.extract_features(caption)
-    entropy = cultural_entropy(feats)
-
-    esn = prediction["esn"]
-    gru = prediction["gru"]
-
-    disagreement = esn["mode"] != gru["mode"]
-    confidence_gap = abs(esn["confidence"] - gru["confidence"])
-    overall_conf = max(esn["confidence"], gru["confidence"])
-
-    surprise = (
-        disagreement and
-        entropy > 2.2 and
-        0.35 <= overall_conf <= 0.7 and
-        confidence_gap > 0.2
-    )
-
-
-    explanation = ""
-    if surprise:
-        explanation = (
-            "The image activates multiple conflicting cultural signals. "
-            "Immediate visual cues and learned cultural patterns disagree, "
-            "indicating a break from dominant expectations."
-        )
-
-    if not surprise:
-        explanation = "No cultural expectation violation detected."
-
-    return {
-        "is_surprise": surprise,
-        "entropy": round(entropy, 3),
-        "esn_mode": esn["mode"],
-        "gru_mode": gru["mode"],
-        "confidence": round(overall_conf, 3),
-        "explanation": explanation
-    }
-
+    """Use the enhanced surprise detector"""
+    return surprise_detector.detect(caption, prediction, cultural_manager.esn)
 
 
 # ------------------------------------------------------------
@@ -463,55 +446,76 @@ def add_cultural_entry(mode, name, description, region, festival, story, recipe_
         return "Entry added successfully!"
     except Exception as e:
         return f"Error adding entry: {str(e)}"
-# ------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------
-def get_esn_explanation_and_injection(caption: str, mode: str, conf: float, top_k=4) -> tuple[str, str]:
-    """
-    Returns:
-    - short explanation line (e.g. "ESN detected strong festival + thali signals")
-    - modified sentence piece to inject (or "" if weak)
-    """
-    if conf < 0.52:
-        return "", ""
 
-    feats = cultural_manager.esn.extract_features(caption)  # assuming you can access it
+# ------------------------------------------------------------
+# ── ENHANCED: ESN/GRU CULTURAL INJECTION LOGIC ──
+# ------------------------------------------------------------
+def get_cultural_injection(caption: str, mode: str, esn_conf: float, gru_conf: float, top_k=3) -> tuple[str, str, str]:
+    """
+    Returns comprehensive cultural enhancement based on BOTH models.
+    
+    Returns:
+    - prefix_injection: text to prepend
+    - suffix_context: cultural context to append
+    - reasoning_trace: explanation of what activated
+    """
+    
+    # No injection for weak predictions
+    if max(esn_conf, gru_conf) < CULTURAL_CONFIDENCE_THRESHOLD:
+        return "", "", "Confidence too low for cultural injection"
+    
+    # Get ESN feature activations
+    feats = cultural_manager.esn.extract_features(caption)
     feature_names = [
         "caption_length", "spice_level", "ritual_score", "daily_score", "heritage",
         "color_vivid", "texture_words", "serving_style", "has_thali", "has_festival",
         "has_sweet", "has_rice", "veg_focus", "meat_focus", "has_dessert", "has_beverage",
         "has_offering", "has_decoration", "has_people", "has_utensil",
         "adj_ratio", "uniq_ratio", "sentiment_pos"
-    ] + ["bias"] * 5  # last few are constants
-
-    # Get top indices (ignore last 5 bias terms)
-    top_indices = np.argsort(feats[:-5])[::-1][:top_k]
-    top_pairs = [(feature_names[i], round(float(feats[i]), 2)) for i in top_indices if feats[i] > 0.35]
-
-    if not top_pairs:
-        return "", ""
-
-    # Build explanation
-    strongest = top_pairs[0][0]
-    explanation = f"ESN activated mainly by: " + ", ".join(f"{name} ({val})" for name, val in top_pairs[:3])
-
-    # Decide what stylistic injection to make
-    injection = ""
-    if "has_festival" in strongest or any("festival" in n for n, v in top_pairs if v > 1.2):
-        injection = "festive "
-    elif "has_thali" in strongest or feats[feature_names.index("has_thali")] > 1.4:
-        injection = "traditional thali of "
-    elif "spice_level" in strongest and top_pairs[0][1] > 1.1:
-        injection = "richly spiced "
-    elif "has_offering" in strongest or "ritual" in strongest:
-        injection = "ceremonial "
-    elif "heritage" in strongest and top_pairs[0][1] > 0.9:
-        injection = "time-honored "
-    elif "daily_score" in strongest and top_pairs[0][1] > 0.9:
-        injection = "comforting homemade "
-
-    return explanation, injection
+    ]
     
+    # Get top activated features (excluding bias terms)
+    top_indices = np.argsort(feats[:23])[::-1][:top_k]
+    top_features = [(feature_names[i], round(float(feats[i]), 2)) for i in top_indices if feats[i] > 0.4]
+    
+    # Build reasoning trace
+    reasoning_parts = []
+    reasoning_parts.append(f"ESN → {mode} ({esn_conf:.3f})")
+    reasoning_parts.append(f"GRU → {mode} ({gru_conf:.3f})")
+    if top_features:
+        reasoning_parts.append(f"Top signals: {', '.join(f'{n}={v}' for n, v in top_features[:3])}")
+    
+    reasoning_trace = " | ".join(reasoning_parts)
+    
+    # Get template for this mode
+    template = CULTURAL_TEMPLATES.get(mode, CULTURAL_TEMPLATES["generic"])
+    prefix = template["prefix"]
+    suffix = template["suffix"]
+    
+    # Additional specific injections based on features
+    if mode == "food_traditional":
+        if feats[8] > 1.4:  # has_thali
+            prefix = "traditional thali of "
+        elif feats[1] > 1.1:  # spice_level
+            prefix = "richly spiced "
+        elif feats[4] > 0.9:  # heritage
+            prefix = "heritage-style "
+    
+    elif mode == "festival_context":
+        if feats[9] > 1.5:  # has_festival
+            prefix = "festive ceremonial "
+        elif feats[16] > 1.2:  # has_offering
+            prefix = "ritual offering of "
+    
+    elif mode == "daily_life":
+        if feats[3] > 0.9:  # daily_score
+            prefix = "everyday "
+        elif feats[18] > 0.8:  # has_people
+            prefix = "family gathering with "
+    
+    return prefix, suffix, reasoning_trace
+
+
 import re
 from collections import Counter
 
@@ -522,74 +526,26 @@ STOPWORDS = {
 }
 
 def build_pexels_query(caption: str, max_terms: int = 5) -> str:
-    """
-    Convert a full caption into a short, search-safe keyword query.
-    Generic, domain-independent, no hardcoding.
-    """
-
     if not caption:
         return "photo"
 
-    # lowercase + remove punctuation
     text = caption.lower()
     text = re.sub(r"[^a-z\s]", " ", text)
-
     tokens = text.split()
-
-    # remove stopwords + very short tokens
-    tokens = [
-        t for t in tokens
-        if t not in STOPWORDS and len(t) > 3
-    ]
+    tokens = [t for t in tokens if t not in STOPWORDS and len(t) > 3]
 
     if not tokens:
         return "photo"
 
-    # frequency-based salience
     freq = Counter(tokens)
-
-    # prefer mid-caption nouns (avoid boilerplate starts)
-    sorted_tokens = sorted(
-        freq.items(),
-        key=lambda x: (-x[1], tokens.index(x[0]))
-    )
-
+    sorted_tokens = sorted(freq.items(), key=lambda x: (-x[1], tokens.index(x[0])))
     keywords = [w for w, _ in sorted_tokens[:max_terms]]
 
     return " ".join(keywords)
 
 def detect_cultural_silence(caption: str) -> dict:
-    feats = cultural_manager.esn.extract_features(caption)
-
-    silence_axes = {
-        "people_absent": feats[18] < 0.3,
-        "ritual_absent": feats[2] < 0.25,
-        "communal_absent": feats[18] < 0.3,
-        "heritage_absent": feats[4] < 0.3,
-    }
-
-    active_silences = [k for k, v in silence_axes.items() if v]
-
-    if len(active_silences) < 2:
-        return {"is_silence": False}
-
-    interpretation = (
-        "The image is marked by the absence of social and ritual cues, "
-        "suggesting isolation, neutrality, transition, or private space."
-    )
-
-    if len(active_silences) < 2:
-        return {
-            "is_silence": False,
-            "missing_signals": [],
-            "interpretation": "No significant cultural absence detected."
-        }
-
-    return {
-        "is_silence": True,
-        "missing_signals": active_silences,
-        "interpretation": interpretation
-    }
+    """Use the enhanced silence detector"""
+    return silence_detector.detect(caption, cultural_manager.esn)
 
 
 def search_similar_images(caption: str, num_results=8):
@@ -621,127 +577,124 @@ def search_similar_images(caption: str, num_results=8):
 
 
 # ------------------------------------------------------------
-# Core Functions
+# ── ENHANCED: Core Caption Function ──
 # ------------------------------------------------------------
 def run_caption(image, language, use_esn, compare_models=False):
     """
-    Returns (IN THIS ORDER):
-    1. final_caption_en
-    2. local_caption
-    3. hashtags_str
-    4. audio_file
-    5. image_path
-    6. context_state
-    7. comparison_text
-    8. reasoning_trace
-    9. prediction_results
-    10. cultural_signal_plot
-    11. cultural_tag_cloud
-    12. cultural_index
-    13. signal_vector
-    14. disagreement_report
-    15. surprise_report
-    16. silence_report
+    Enhanced version with comprehensive trust & safety analysis.
     """
-
-    # ── Safety: no image ──────────────────────────────────────
     if image is None:
         return (
-            "",                     # final_caption_en
-            "",                     # local_caption
-            "",                     # hashtags
-            None,                   # audio
-            None,                   # image_path
-            None,                   # context_state
-            "",                     # comparison
-            "No image provided.",   # reasoning
-            None,                   # prediction
-            None,                   # plot
-            "",                     # tag cloud
-            {},                     # cultural index
-            {},                     # signal vector
-            {},                     # disagreement
-            {},                     # surprise
-            {}                      # silence
+            "", "", "", None, None, None, "", "No image provided.",
+            None, None, "", {}, {}, {}, {}, {}, {}, {}
         )
 
-
-    # ── Save image ────────────────────────────────────────────
+    # Save image
     image_path = "temp.jpg"
     image.save(image_path)
 
-    # ── Base caption (vision-grounded) ─────────────────────────
+    # Base caption (vision-grounded)
     base_caption = generate_base_caption(image_path).strip()
 
-    # ── Cultural classification ────────────────────────────────
+    # Cultural classification
     results = cultural_manager.predict(base_caption)
-    # ── ESN / GRU COGNITION VISUALIZATIONS ─────────────────────
-    try:
-        esn_evolution_html = animate_esn_reservoir(
-            base_caption,
-            cultural_manager.esn,
-            output_path="static/esn_evolution.html"
-        )
-
-        esn_vs_gru_html = compare_esn_gru_3d(
-            base_caption,
-            cultural_manager.esn,
-            cultural_manager.gru,
-            output_path="static/esn_vs_gru.html"
-        )
-
-        counterfactual_html = counterfactual_drift_animation(
-            base_caption,
-            cultural_manager.esn,
-            COUNTERFACTUAL_FRAMES,
-            output_path="static/counterfactual_drift.html"
-        )
-
-    except Exception as e:
-        print("[Visualization error]", e)
+    
+    # 3D Visualizations (if available)
+    if VISUALIZATIONS_AVAILABLE:
+        try:
+            animate_esn_reservoir(
+                base_caption,
+                cultural_manager.esn,
+                output_path="static/esn_evolution.html"
+            )
+            compare_esn_gru_3d(
+                base_caption,
+                cultural_manager.esn,
+                cultural_manager.gru,
+                output_path="static/esn_vs_gru.html"
+            )
+            counterfactual_drift_animation(
+                base_caption,
+                cultural_manager.esn,
+                COUNTERFACTUAL_FRAMES,
+                output_path="static/counterfactual_drift.html"
+            )
+        except Exception as e:
+            print("[Visualization error]", e)
 
     mode = results["combined_mode"]
     esn_conf = results["esn"]["confidence"]
     gru_conf = results["gru"]["confidence"]
     overall_conf = max(esn_conf, gru_conf)
-    surprise_report = detect_cultural_surprise(base_caption, results)
-    silence_report = detect_cultural_silence(base_caption)
-
-    # ── ESN explanation + injection ────────────────────────────
-    esn_explain = ""
-    injection_prefix = ""
-
+    
+    # ── ENHANCED: Comprehensive Analysis ──
+    signal_vector = extract_signal_vector(base_caption)
+    
+    # Comprehensive trust analysis
+    trust_report = trust_analyzer.analyze_comprehensive(
+        results, base_caption, signal_vector, cultural_manager.esn
+    )
+    
+    # Model brain analysis
+    brain_report = brain_analyzer.analyze_model_cognition(
+        results, base_caption, cultural_manager.esn, cultural_manager.gru
+    )
+    
+    # Signal analysis
+    signal_analysis = signal_analyzer.analyze_signal_strength(
+        base_caption, cultural_manager.esn
+    )
+    
+    # Disagreement analysis
+    disagreement_report = disagreement_analyzer.analyze(
+        results, base_caption, cultural_manager.esn, cultural_manager.gru
+    )
+    
+    # Surprise detection
+    surprise_report = surprise_detector.detect(
+        base_caption, results, cultural_manager.esn
+    )
+    
+    # Silence detection
+    silence_report = silence_detector.detect(
+        base_caption, cultural_manager.esn
+    )
+    
+    # ── Cultural injection ──
+    prefix_inject = ""
+    suffix_context = ""
+    reasoning_trace = ""
+    
     if use_esn:
-        esn_explain, injection_prefix = get_esn_explanation_and_injection(
-            base_caption, mode, esn_conf
+        prefix_inject, suffix_context, reasoning_trace = get_cultural_injection(
+            base_caption, mode, esn_conf, gru_conf
         )
-
-    cultural_suffix = CULTURAL_TEMPLATES.get(mode, "")
-
-    # ── Final English caption ──────────────────────────────────
-    if injection_prefix and overall_conf >= CULTURAL_CONFIDENCE_THRESHOLD:
-        final_caption_en = (
-            f"{injection_prefix}{base_caption.rstrip('.')}. {cultural_suffix}"
-        ).strip()
-        reasoning_trace = f"Cultural enhancement applied by ESN.\n{esn_explain}"
-    else:
-        final_caption_en = (
-            base_caption.rstrip(".") +
-            (". " + cultural_suffix if cultural_suffix else "")
-        ).strip()
-        reasoning_trace = "No strong cultural signals detected."
-
-    # ── Model comparison text ──────────────────────────────────
+        prefix_inject = ""
+    
+    # Build final caption with injection
+    final_caption_en = base_caption
+    
+    if prefix_inject:
+        words = base_caption.split()
+        if len(words) > 0:
+            final_caption_en = f"{prefix_inject}{base_caption}"
+    
+    if suffix_context:
+        final_caption_en = final_caption_en.rstrip('.') + '. ' + suffix_context.strip()
+    
+    final_caption_en = final_caption_en.strip()
+    
+    # Model comparison text
     if compare_models:
         comparison_text = (
             f"ESN → {results['esn']['mode']} ({esn_conf:.2f})   |   "
             f"GRU → {results['gru']['mode']} ({gru_conf:.2f})\n"
-            f"{esn_explain if esn_explain else 'ESN: weak activation'}"
+            f"{reasoning_trace}"
         )
     else:
-        comparison_text = esn_explain if esn_explain else ""
+        comparison_text = reasoning_trace if reasoning_trace else ""
 
-    # ── Translation ────────────────────────────────────────────
+    # Translation
     translated = translate_to_language(final_caption_en, language)
     local_caption = (
         naturalize_translation(translated, language)
@@ -749,15 +702,13 @@ def run_caption(image, language, use_esn, compare_models=False):
         else translated
     )
 
-    # ── Hashtags ───────────────────────────────────────────────
-    hashtags_str = generate_hashtags(final_caption_en, min_tags=2)
+    # Enhanced hashtag generation
+    hashtags_str = generate_hashtags(final_caption_en, min_tags=3, max_tags=5)
 
-    # ── Cultural entity extraction ──────────────────────────────
-    signal_vector = extract_signal_vector(base_caption)
     signal_summary = summarize_signals(signal_vector)
-
     cultural_index = build_cultural_index(signal_vector)
 
+    # Save to DB
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
@@ -780,8 +731,7 @@ def run_caption(image, language, use_esn, compare_models=False):
     except Exception as e:
         print(f"[DB] Auto-save failed: {e}")
 
-
-    # ── Audio narration ────────────────────────────────────────
+    # Audio narration
     audio_file = None
     try:
         audio_path = OUT_AUDIO / "caption.mp3"
@@ -791,7 +741,7 @@ def run_caption(image, language, use_esn, compare_models=False):
     except Exception as e:
         print(f"[TTS] Failed: {e}")
 
-    # ── VISUAL ANALYTICS (ADDED FEATURES) ──────────────────────
+    # Visual analytics
     try:
         cultural_signal_plot = build_cultural_signal_plot(base_caption)
     except Exception as e:
@@ -804,13 +754,8 @@ def run_caption(image, language, use_esn, compare_models=False):
         print(f"[Tags] Failed: {e}")
         cultural_tag_cloud = "Could not generate cultural tags."
 
-    # ── Context state (used by Q&A / RAG) ──────────────────────
-    context_state = (
-        final_caption_en + (" " + cultural_suffix if cultural_suffix else "")
-    )
-    disagreement_report = analyze_esn_gru_disagreement(results)
+    context_state = final_caption_en
 
-    # ── Return ALL outputs ─────────────────────────────────────
     return (
         final_caption_en,
         local_caption,
@@ -824,10 +769,12 @@ def run_caption(image, language, use_esn, compare_models=False):
         cultural_signal_plot,
         cultural_tag_cloud,
         cultural_index,
-        signal_vector,          # ← THIS
+        signal_vector,
         disagreement_report,
         surprise_report,
-        silence_report
+        silence_report,
+        trust_report,
+        brain_report
     )
 
 
@@ -838,16 +785,12 @@ def process_qa(question, audio_input, history, image_path, context):
             with sr.AudioFile(audio_input) as source:
                 recognizer.adjust_for_ambient_noise(source, duration=0.3)
                 audio_data = recognizer.record(source)
-
             question = recognizer.recognize_google(audio_data)
-
         except sr.UnknownValueError:
             question = ""
-
         except Exception as e:
             print("[Speech error]", e)
             question = ""
-
 
     if not image_path:
         return history + [["", "Please generate a caption first."]], None, None
@@ -857,16 +800,16 @@ def process_qa(question, audio_input, history, image_path, context):
 
     context_trim = context[:800]
     system_prompt = f"""
-        RULES (STRICT):
-        - Respond directly with the answer.
-        - Do NOT mention the image, the caption, or how you know the information.
-        - Do NOT explain your role or reasoning process.
-        - Write naturally, as if speaking to a curious person.
-        - Be clear, grounded, and culturally accurate.
+RULES (STRICT):
+- Respond directly with the answer.
+- Do NOT mention the image, the caption, or how you know the information.
+- Do NOT explain your role or reasoning process.
+- Write naturally, as if speaking to a curious person.
+- Be clear, grounded, and culturally accurate.
 
-        Context to ground your answer:
-        {context_trim}
-        """
+Context to ground your answer:
+{context_trim}
+"""
 
     try:
         prompt = f"{system_prompt}\n\nQuestion: {question}\nAnswer:"
@@ -920,37 +863,21 @@ daily life, rituals, or traditions. Be respectful, vivid, and concrete.
 """
 
     try:
-        story = ollama_generate(
-            prompt,
-            temperature=0.6,
-            max_tokens=420
-        )
+        story = ollama_generate(prompt, temperature=0.6, max_tokens=420)
         return facts_md, clean_llm_caption(story), "SQLite DB + Ollama"
     except Exception as e:
         return facts_md, f"Could not generate story: {str(e)}", "N/A"
 
 def clean_llm_caption(text: str) -> str:
-    """
-    Removes common LLM self-referential or explanatory prefixes/suffixes.
-    """
     if not text:
         return text
 
     BAD_PREFIXES = [
-        "here is",
-        "here’s",
-        "this is",
-        "below is",
-        "the following",
-        "rewritten version",
-        "as requested",
-        "in conclusion",
-        "overall,",
+        "here is", "here's", "this is", "below is", "the following",
+        "rewritten version", "as requested", "in conclusion", "overall,",
     ]
 
     lines = text.strip().splitlines()
-
-    # Keep only lines that look like actual content
     clean_lines = []
     for line in lines:
         l = line.strip().lower()
@@ -962,7 +889,6 @@ def clean_llm_caption(text: str) -> str:
 
     cleaned = " ".join(clean_lines).strip()
 
-    # Final polish
     if cleaned and not cleaned.endswith(('.', '!', '?')):
         cleaned += '.'
 
@@ -993,11 +919,7 @@ Text:
 """
 
     try:
-        adapted = ollama_generate(
-            prompt,
-            temperature=0.65,
-            max_tokens=220
-        )
+        adapted = ollama_generate(prompt, temperature=0.65, max_tokens=220)
         return clean_llm_caption(adapted)
     except Exception as e:
         return f"[Error adapting caption] {str(e)}"
@@ -1005,18 +927,18 @@ Text:
 
 def accessibility_description(caption):
     prompt = f"""
-        RULES (STRICT):
-        - Write ONLY the description itself.
-        - Do NOT mention images, captions, photos, or descriptions.
-        - Do NOT explain what you are doing.
-        - Use short, concrete sentences.
-        - Describe objects, layout, actions, and atmosphere.
-        - Avoid assumptions and cultural speculation unless clearly indicated.
-        - If something is unclear, state it neutrally.
+RULES (STRICT):
+- Write ONLY the description itself.
+- Do NOT mention images, captions, photos, or descriptions.
+- Do NOT explain what you are doing.
+- Use short, concrete sentences.
+- Describe objects, layout, actions, and atmosphere.
+- Avoid assumptions and cultural speculation unless clearly indicated.
+- If something is unclear, state it neutrally.
 
-        Description:
-        {caption}
-        """
+Description:
+{caption}
+"""
 
     try:
         response = ollama_generate(prompt, temperature=0.5, max_tokens=500)
@@ -1033,26 +955,20 @@ def accessibility_description(caption):
 
     return response, audio_file
 
-from datetime import datetime
 
 def temporal_weight(added_at: str) -> float:
-    """
-    Exponential temporal decay.
-    Handles SQLite naive timestamps safely.
-    """
+    """Exponential temporal decay with proper timezone handling."""
     try:
         t = datetime.fromisoformat(added_at)
-
-        # 🔑 FIX: force UTC if SQLite timestamp is naive
         if t.tzinfo is None:
             t = t.replace(tzinfo=timezone.utc)
-
     except Exception:
         return 1.0
 
     now = datetime.now(timezone.utc)
     age_days = (now - t).total_seconds() / 86400
     return float(np.exp(-TEMPORAL_DECAY_LAMBDA * age_days))
+
 
 def generate_heritage_graph(_, mode):
     conn = sqlite3.connect(DB_PATH)
@@ -1062,7 +978,7 @@ def generate_heritage_graph(_, mode):
         FROM cultural_explorer
         WHERE mode = ?
         ORDER BY added_at DESC
-        LIMIT 80
+        LIMIT 100
     """, (mode,))
     rows = c.fetchall()
     conn.close()
@@ -1079,8 +995,7 @@ def generate_heritage_graph(_, mode):
             continue
 
         w = temporal_weight(added_at)
-
-        active = [k for k, v in signals.items() if v >= 0.65]
+        active = [k for k, v in signals.items() if v >= 0.6]
 
         for i in range(len(active)):
             for j in range(i + 1, len(active)):
@@ -1092,15 +1007,24 @@ def generate_heritage_graph(_, mode):
                     G.add_edge(a, b, weight=w)
 
     if not G.nodes:
-        G.add_node("No dominant cultural signals yet")
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.text(0.5, 0.5, "No cultural signals yet - generate some captions first!",
+                ha="center", va="center", fontsize=12)
+        ax.axis("off")
+        return fig, []
 
-    # ── Visualization ─────────────────────────────────────────
-    fig, ax = plt.subplots(figsize=(9, 6))
-    pos = nx.spring_layout(G, weight="weight", k=1.1, seed=42)
+    fig, ax = plt.subplots(figsize=(10, 7))
+    
+    pos = nx.spring_layout(G, weight="weight", k=1.5, iterations=50, seed=42)
 
     edge_weights = [G[u][v]["weight"] for u, v in G.edges]
+    
+    if edge_weights:
+        max_weight = max(edge_weights)
+        normalized_weights = [w / max_weight for w in edge_weights]
+    else:
+        normalized_weights = []
 
-    # ── Community detection ─────────────────────────
     communities = list(greedy_modularity_communities(G, weight="weight"))
 
     node_color_map = {}
@@ -1110,413 +1034,1174 @@ def generate_heritage_graph(_, mode):
             node_color_map[node] = color
 
     node_colors = [node_color_map.get(n, "#cccccc") for n in G.nodes]
+    node_sizes = [2000 + 400 * G.degree(n) for n in G.nodes]
 
-    # ── Draw clustered graph ────────────────────────
     nx.draw(
         G, pos,
         ax=ax,
         with_labels=True,
-        node_size=2600,
+        node_size=node_sizes,
         node_color=node_colors,
         edge_color="#999999",
-        width=[max(0.6, w) for w in edge_weights],
-        font_size=10,
+        width=[max(0.5, 3 * w) for w in normalized_weights],
+        font_size=9,
         font_weight="bold",
-        alpha=0.92
+        alpha=0.9
     )
 
+    ax.set_title(f"Cultural Heritage Network - {mode.replace('_', ' ').title()}", fontsize=14)
+    plt.tight_layout()
 
-    return fig, [
+    edge_data = [
         {
             "signal_a": u,
             "signal_b": v,
-            "temporal_weight": round(G[u][v]["weight"], 3)
+            "temporal_weight": round(G[u][v]["weight"], 3),
+            "occurrences": int(G[u][v]["weight"] / 0.5)
         }
-        for u, v in G.edges
+        for u, v in sorted(G.edges, key=lambda e: -G[e[0]][e[1]]["weight"])[:20]
     ]
+
+    return fig, edge_data
+
 
 def generate_heritage_evolution_snapshot(mode):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""
-        SELECT signal_vector
+        SELECT signal_vector, added_at
         FROM cultural_explorer
         WHERE mode = ?
-        ORDER BY added_at DESC
-        LIMIT 50
+        ORDER BY added_at ASC
+        LIMIT 100
     """, (mode,))
     rows = c.fetchall()
     conn.close()
 
-    if not rows:
-        fig, ax = plt.subplots()
-        ax.text(0.5, 0.5, "No cultural history yet",
+    if not rows or len(rows) < 3:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, "Not enough data for evolution - need at least 3 entries",
                 ha="center", va="center", fontsize=14)
         ax.axis("off")
         return fig
 
-    G = nx.Graph()
-
-    for (signal_json,) in rows:
-        signals = json.loads(signal_json)
-        active = [k for k, v in signals.items() if v >= 0.65]
-        for i in range(len(active)):
-            for j in range(i + 1, len(active)):
-                G.add_edge(active[i], active[j])
-
-    fig, ax = plt.subplots(figsize=(8, 6))
-    pos = nx.spring_layout(G, seed=42)
-
-    nx.draw(
-        G, pos, ax=ax,
-        node_color="#f4a261",
-        node_size=2400,
-        font_size=10,
-        with_labels=True
-    )
-
-    ax.set_title("Cultural Signal Co-evolution")
+    timestamps = []
+    signal_strengths = {}
+    
+    for signal_json, added_at in rows:
+        try:
+            signals = json.loads(signal_json)
+            t = datetime.fromisoformat(added_at)
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=timezone.utc)
+            timestamps.append(t)
+            
+            for signal_name, strength in signals.items():
+                if signal_name not in signal_strengths:
+                    signal_strengths[signal_name] = []
+                signal_strengths[signal_name].append(strength)
+        except:
+            continue
+    
+    if not timestamps:
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, "No valid temporal data", ha="center", va="center")
+        ax.axis("off")
+        return fig
+    
+    fig, ax = plt.subplots(figsize=(12, 7))
+    
+    start_time = min(timestamps)
+    relative_days = [(t - start_time).total_seconds() / 86400 for t in timestamps]
+    
+    signal_means = {k: np.mean(v) for k, v in signal_strengths.items()}
+    top_signals = sorted(signal_means.items(), key=lambda x: -x[1])[:4]
+    
+    colors_cycle = ['#e63946', '#457b9d', '#2a9d8f', '#f4a261']
+    
+    for idx, (signal_name, _) in enumerate(top_signals):
+        values = signal_strengths[signal_name]
+        
+        if len(values) > 5:
+            window = 5
+            smoothed = np.convolve(values, np.ones(window)/window, mode='valid')
+            smoothed_days = relative_days[window-1:]
+        else:
+            smoothed = values
+            smoothed_days = relative_days
+        
+        ax.plot(smoothed_days, smoothed, 
+                marker='o', markersize=4,
+                label=signal_name.replace('_', ' ').title(),
+                color=colors_cycle[idx % len(colors_cycle)],
+                linewidth=2, alpha=0.8)
+    
+    ax.set_xlabel("Days Since First Entry", fontsize=11)
+    ax.set_ylabel("Signal Strength", fontsize=11)
+    ax.set_title(f"Cultural Signal Evolution - {mode.replace('_', ' ').title()}", fontsize=13, fontweight='bold')
+    ax.legend(loc='best', framealpha=0.9)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
     return fig
 
 
 def safety_metrics(prediction):
+    """Enhanced safety metrics using trust analyzer"""
     if not prediction:
-        return 1.0, 0.0, 0.0
+        return 1.0, 0.0, 0.0, {}
 
-    mode = extract_mode_from_prediction(prediction)
-    conf = max(
-        prediction["esn"]["confidence"],
-        prediction["gru"]["confidence"]
+    # Get comprehensive trust analysis
+    signal_vector = {}  # Will be populated from DB if needed
+    trust_report = trust_analyzer.analyze_comprehensive(
+        prediction, "", signal_vector, cultural_manager.esn
     )
 
-    hallucination_risk = round(1 - conf, 2)
-    vision_align = round(0.85 if mode != "generic" else 0.65, 2)
-    cultural_conf = round(conf, 2)
+    hallucination_risk = trust_report.get("hallucination_risk", {}).get("score", 0.5)
+    vision_align = trust_report.get("vision_text_consistency", {}).get("score", 0.5)
+    cultural_conf = trust_report.get("cultural_confidence", {}).get("score", 0.5)
 
-    return hallucination_risk, vision_align, cultural_conf
+    return hallucination_risk, vision_align, cultural_conf, trust_report
 
 
-def model_brain(results):
+def model_brain(results, caption=""):
+    """Enhanced model brain using brain analyzer"""
     if results is None or not isinstance(results, dict):
         return (
             "No model prediction available yet",
             "No model prediction available yet",
-            "Upload and caption an image first"
+            "Upload and caption an image first",
+            {}
         )
 
-    esn = results.get("esn", {})
-    gru = results.get("gru", {})
+    brain_report = brain_analyzer.analyze_model_cognition(
+        results, caption, cultural_manager.esn, cultural_manager.gru
+    )
 
-    esn_text = f"ESN → {esn.get('mode', 'N/A')} (confidence: {esn.get('confidence', 'N/A'):.3f})"
-    gru_text = f"GRU → {gru.get('mode', 'N/A')} (confidence: {gru.get('confidence', 'N/A'):.3f})"
+    esn_analysis = brain_report.get("esn_analysis", {})
+    gru_analysis = brain_report.get("gru_analysis", {})
+    
+    esn_text = f"ESN → {esn_analysis.get('mode', 'N/A')} (confidence: {esn_analysis.get('confidence', 0):.3f})\n"
+    esn_text += f"Cognitive Style: {esn_analysis.get('cognitive_style', 'N/A')}\n"
+    esn_text += f"Top Features: {esn_analysis.get('top_features', [])}"
+    
+    gru_text = f"GRU → {gru_analysis.get('mode', 'N/A')} (confidence: {gru_analysis.get('confidence', 0):.3f})\n"
+    gru_text += f"Cognitive Style: {gru_analysis.get('cognitive_style', 'N/A')}"
+    
+    comparison = brain_report.get("cognitive_comparison", {})
+    trigger_text = comparison.get("interpretation", "")
 
-    return esn_text, gru_text, ""
+    return esn_text, gru_text, trigger_text, brain_report
 
 def analyze_esn_gru_disagreement(results: dict) -> dict:
-    if not results or "esn" not in results or "gru" not in results:
-        return {"status": "No prediction available"}
+    """Use the enhanced disagreement analyzer"""
+    return disagreement_analyzer.analyze(
+        results, "", cultural_manager.esn, cultural_manager.gru
+    )
 
-    esn = results["esn"]
-    gru = results["gru"]
+# ------------------------------------------------------------
+# ENHANCED UI WITH MODERN DESIGN
+# ------------------------------------------------------------
 
-    disagreement = esn["mode"] != gru["mode"]
+# Custom CSS for modern, professional look
+custom_css = """
+/* ═══════════════════════════════════════════════════════════════
+   GLOBAL STYLES & VARIABLES
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+    --primary-gradient: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+    --secondary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --accent-color: #FF6B35;
+    --text-primary: #2C3E50;
+    --text-secondary: #7F8C8D;
+    --bg-card: #FFFFFF;
+    --bg-surface: #F8F9FA;
+    --border-color: #E9ECEF;
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --spacing-xs: 0.5rem;
+    --spacing-sm: 1rem;
+    --spacing-md: 1.5rem;
+    --spacing-lg: 2rem;
+}
 
-    return {
-        "disagreement": disagreement,
-        "esn_mode": esn["mode"],
-        "gru_mode": gru["mode"],
-        "esn_confidence": round(esn["confidence"], 3),
-        "gru_confidence": round(gru["confidence"], 3),
-        "confidence_gap": round(abs(esn["confidence"] - gru["confidence"]), 3),
-        "note": (
-            "Models agree → stable cultural interpretation"
-            if not disagreement else
-            "Models disagree → ambiguous cultural cues"
-        )
+/* ═══════════════════════════════════════════════════════════════
+   TYPOGRAPHY
+   ═══════════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap');
+
+* {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HEADER & BRANDING
+   ═══════════════════════════════════════════════════════════════ */
+.app-header {
+    background: var(--primary-gradient);
+    padding: 3rem 2rem;
+    margin: -1.5rem -1.5rem 2rem -1.5rem;
+    text-align: center;
+    border-radius: 0 0 32px 32px;
+    box-shadow: var(--shadow-lg);
+    position: relative;
+    overflow: hidden;
+}
+
+.app-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+    border-radius: 50%;
+}
+
+.app-header::after {
+    content: '';
+    position: absolute;
+    bottom: -30%;
+    left: -5%;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    border-radius: 50%;
+}
+
+.app-title {
+    position: relative;
+    z-index: 1;
+}
+
+.app-title h1 {
+    font-size: 3.2rem;
+    font-weight: 800;
+    color: #FFFFFF;
+    margin: 0 0 0.5rem 0;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    letter-spacing: -0.03em;
+}
+
+.app-title .subtitle {
+    font-size: 1.1rem;
+    color: rgba(255,255,255,0.95);
+    font-weight: 400;
+    margin: 0;
+    letter-spacing: 0.01em;
+}
+
+.app-title .version-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.2);
+    color: white;
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-top: 1rem;
+    backdrop-filter: blur(10px);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TABS
+   ═══════════════════════════════════════════════════════════════ */
+.tabs {
+    background: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    padding: 0.5rem;
+    margin-bottom: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+.tab-nav button {
+    background: transparent;
+    border: none;
+    padding: 0.875rem 1.5rem;
+    margin: 0 0.25rem;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.tab-nav button:hover {
+    background: rgba(255,107,53,0.08);
+    color: var(--accent-color);
+    transform: translateY(-1px);
+}
+
+.tab-nav button.selected {
+    background: white;
+    color: var(--accent-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.tab-nav button.selected::after {
+    content: '';
+    position: absolute;
+    bottom: -0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40%;
+    height: 3px;
+    background: var(--primary-gradient);
+    border-radius: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CARDS & CONTAINERS
+   ═══════════════════════════════════════════════════════════════ */
+.card, .gradio-container .gr-box {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 2px solid var(--bg-surface);
+}
+
+.card-header h3 {
+    font-size: 1.3rem;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.section-divider {
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-color) 0%, transparent 100%);
+    margin: var(--spacing-lg) 0;
+    border-radius: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════════════════════════════ */
+.gradio-container button {
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    padding: 0.875rem 1.75rem;
+    font-size: 0.95rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: none;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.gradio-container button::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.gradio-container button:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+.gradio-container button.primary {
+    background: var(--primary-gradient);
+    color: white;
+    box-shadow: 0 4px 14px rgba(255,107,53,0.35);
+}
+
+.gradio-container button.primary:hover {
+    box-shadow: 0 6px 20px rgba(255,107,53,0.45);
+    transform: translateY(-2px);
+}
+
+.gradio-container button.secondary {
+    background: white;
+    color: var(--accent-color);
+    border: 2px solid var(--accent-color);
+}
+
+.gradio-container button.secondary:hover {
+    background: var(--accent-color);
+    color: white;
+    transform: translateY(-2px);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INPUTS & TEXTBOXES
+   ═══════════════════════════════════════════════════════════════ */
+.gradio-container input,
+.gradio-container textarea {
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.875rem 1rem;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.gradio-container input:focus,
+.gradio-container textarea:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(255,107,53,0.1);
+    outline: none;
+}
+
+.gradio-container label {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    letter-spacing: 0.01em;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   IMAGE UPLOAD
+   ═══════════════════════════════════════════════════════════════ */
+.gradio-container .image-container {
+    border: 3px dashed var(--border-color);
+    border-radius: var(--radius-lg);
+    transition: all 0.3s ease;
+    background: var(--bg-surface);
+}
+
+.gradio-container .image-container:hover {
+    border-color: var(--accent-color);
+    background: rgba(255,107,53,0.03);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CHATBOT
+   ═══════════════════════════════════════════════════════════════ */
+.gradio-container .chatbot {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.gradio-container .message {
+    border-radius: var(--radius-md);
+    padding: 1rem 1.25rem;
+    margin: 0.5rem 0;
+    max-width: 80%;
+}
+
+.gradio-container .message.user {
+    background: var(--primary-gradient);
+    color: white;
+    margin-left: auto;
+}
+
+.gradio-container .message.bot {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GALLERY
+   ═══════════════════════════════════════════════════════════════ */
+.gradio-container .gallery {
+    gap: 1rem;
+}
+
+.gradio-container .gallery-item {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+}
+
+.gradio-container .gallery-item:hover {
+    box-shadow: var(--shadow-md);
+    transform: scale(1.03);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ACCORDION & COLLAPSIBLES
+   ═══════════════════════════════════════════════════════════════ */
+.gradio-container .accordion {
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.gradio-container .accordion-header {
+    background: var(--bg-surface);
+    padding: 1rem 1.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.gradio-container .accordion-header:hover {
+    background: rgba(255,107,53,0.05);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PLOTS & VISUALIZATIONS
+   ═══════════════════════════════════════════════════════════════ */
+.gradio-container .plot-container {
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    background: white;
+    padding: 1rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   JSON DISPLAY
+   ═══════════════════════════════════════════════════════════════ */
+.gradio-container .json-holder {
+    background: #ffffff;
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 0.85rem;
+    overflow-x: auto;
+    box-shadow: var(--shadow-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BADGES & TAGS
+   ═══════════════════════════════════════════════════════════════ */
+.badge {
+    display: inline-block;
+    padding: 0.35rem 0.875rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.badge-primary {
+    background: var(--primary-gradient);
+    color: white;
+}
+
+.badge-success {
+    background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+    color: white;
+}
+
+.badge-info {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    color: white;
+}
+
+.badge-warning {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    color: white;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LOADING & ANIMATIONS
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.loading {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
     }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
-# ------------------------------------------------------------
-# UI
-# ------------------------------------------------------------
+.animate-in {
+    animation: slideIn 0.5s ease-out;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE DESIGN
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    .app-title h1 {
+        font-size: 2rem;
+    }
+    
+    .app-header {
+        padding: 2rem 1rem;
+    }
+    
+    .card {
+        padding: 1rem;
+    }
+    
+    .tab-nav button {
+        padding: 0.675rem 1rem;
+        font-size: 0.85rem;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   UTILITY CLASSES
+   ═══════════════════════════════════════════════════════════════ */
+.text-center { text-align: center; }
+.text-primary { color: var(--accent-color); }
+.text-muted { color: var(--text-secondary); }
+.mt-1 { margin-top: var(--spacing-xs); }
+.mt-2 { margin-top: var(--spacing-sm); }
+.mt-3 { margin-top: var(--spacing-md); }
+.mb-1 { margin-bottom: var(--spacing-xs); }
+.mb-2 { margin-bottom: var(--spacing-sm); }
+.mb-3 { margin-bottom: var(--spacing-md); }
+.p-0 { padding: 0; }
+.p-1 { padding: var(--spacing-xs); }
+.p-2 { padding: var(--spacing-sm); }
+.p-3 { padding: var(--spacing-md); }
+
+/* ═══════════════════════════════════════════════════════════════
+   SCROLLBAR STYLING
+   ═══════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-surface);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--accent-color), #F7931E);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #F7931E, var(--accent-color));
+}
+/* ═══════════════════════════════════════════════════════════════
+   FIX: JSON VISIBILITY & SYNTAX HIGHLIGHTING
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Main JSON container */
+.gradio-container .json-holder,
+.gradio-json {
+    background: #f5f5f5 !important;
+    color: #2c3e50 !important;
+    font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+    font-size: 0.9rem !important;
+    line-height: 1.6 !important;
+    padding: 1.5rem !important;
+    border-radius: 8px !important;
+    border: 1px solid #e0e0e0 !important;
+}
+
+/* Dark mode variant */
+.gradio-container.dark .json-holder,
+.gradio-container.dark .gradio-json {
+    background: #1e1e1e !important;
+    color: #e0e0e0 !important;
+}
+
+/* Keys - make them visible */
+.gradio-container .json-holder span.key,
+.gradio-json span.key {
+    color: #0066cc !important;
+    font-weight: 600 !important;
+}
+
+/* Strings */
+.gradio-container .json-holder span.string,
+.gradio-json span.string {
+    color: #008000 !important;
+}
+
+/* Numbers */
+.gradio-container .json-holder span.number,
+.gradio-json span.number {
+    color: #e64980 !important;
+    font-weight: 500 !important;
+}
+
+/* Booleans / null */
+.gradio-container .json-holder span.boolean,
+.gradio-container .json-holder span.null,
+.gradio-json span.boolean,
+.gradio-json span.null {
+    color: #9966cc !important;
+    font-weight: 600 !important;
+}
+
+/* Brackets & punctuation */
+.gradio-container .json-holder span.punctuation,
+.gradio-json span.punctuation {
+    color: #2c3e50 !important;
+    font-weight: 700 !important;
+}
+
+/* All text in JSON containers */
+.gradio-container .json-holder *,
+.gradio-json * {
+    color: #2c3e50 !important;
+    font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+}
+
+/* JSON container full width */
+.gradio-container .json-holder,
+.gradio-json {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+}
+
+/* Fix control panel height */
+.controls-panel {
+    min-height: 260px;
+}
+
+"""
+
 with gr.Blocks(
-    title="Cultural AI Explorer • Local Ollama",
+    title="Cultural AI Explorer • Enhanced Trust & Safety",
     theme=gr.themes.Soft(
         primary_hue="orange",
         secondary_hue="amber",
         neutral_hue="stone",
         radius_size="lg",
-        font=["Inter", "sans-serif"]
+        font=["Inter", "sans-serif"],
+        font_mono=["JetBrains Mono", "monospace"]
     ),
-    css="""
-    .app-title { text-align: center; padding: 2rem 0 1rem; }
-    .app-title h1 { font-size: 2.6rem; font-weight: 700; color: #d35400; margin-bottom: 0.3rem; }
-    .app-title p { font-size: 1.1rem; color: #7f8c8d; }
-    .card { background: #ffffff; border-radius: 16px; padding: 1.5rem; box-shadow: 0 10px 25px rgba(0,0,0,0.06); }
-    """
+    css=custom_css
 ) as demo:
 
+    # Enhanced Header
     gr.HTML("""
-    <div class="app-title">
-        <h1>🧠 Cultural AI Explorer • Local Ollama</h1>
-        <p>Offline • Explainable • Culturally Grounded • SQLite + Ollama</p>
+    <div class="app-header">
+        <div class="app-title">
+            <h1>🧠 Cultural AI Explorer</h1>
+            <p class="subtitle">Comprehensive Trust & Safety • Cultural Signal Analysis • Model Interpretability</p>
+            <span class="version-badge">Enhanced Edition v2.0</span>
+        </div>
     </div>
     """)
 
     with gr.Tabs():
 
-        # =========================================================
-        # Caption Generation
-        # =========================================================
-        with gr.Tab("Caption Generation"):
-            with gr.Row(equal_height=True):
-
-                # -------- Left column
-                with gr.Column(scale=1, min_width=360):
-                    with gr.Group(elem_classes="card"):
-                        gr.Markdown("### 📤 Upload & Settings")
-                        img = gr.Image(type="pil", label="Upload Image", height=360)
+        # ═══════════════════════════════════════════════════════════════
+        # CAPTION GENERATION TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("🎨 Caption Generation"):
+            with gr.Row():
+                # Left Column - Upload & Controls
+                with gr.Column(scale=1, min_width=380):
+                    gr.HTML('<div class="card-header"><h3>📤 Upload & Settings</h3></div>')
+                    
+                    img = gr.Image(
+                        type="pil",
+                        label="Upload Image",
+                        height=380,
+                        elem_classes="card"
+                    )
+                    
+                    with gr.Group(elem_classes="card controls-panel"):
                         lang = gr.Dropdown(
                             choices=list(TTS_LANG.keys()),
                             value="English",
-                            label="Output Language"
+                            label="🌐 Output Language",
+                            elem_classes="mb-2"
                         )
+                        
                         use_esn = gr.Checkbox(
                             value=True,
-                            label="Inject Cultural Context (ESN)"
+                            label="🔮 Inject Cultural Context (ESN)",
+                            elem_classes="mb-1"
                         )
+                        
                         compare_models = gr.Checkbox(
                             value=False,
-                            label="Compare ESN vs GRU"
+                            label="⚖️ Compare ESN vs GRU Models",
+                            elem_classes="mb-2"
                         )
+                        
                         btn = gr.Button(
                             "✨ Generate Caption",
                             variant="primary",
-                            size="lg"
+                            size="lg",
+                            elem_classes="primary"
                         )
 
-                # -------- Right column
-                with gr.Column(scale=2, min_width=520):
+                # Right Column - Results
+                with gr.Column(scale=2, min_width=600):
+                    gr.HTML('<div class="card-header"><h3>📝 Generated Output</h3></div>')
+                    
                     with gr.Group(elem_classes="card"):
-                        gr.Markdown("### 📝 Generated Output")
-
                         out_en = gr.Textbox(
-                            label="Final Caption (English)",
+                            label="📄 Final Caption (English)",
                             lines=3,
                             interactive=False,
-                            show_copy_button=True
+                            show_copy_button=True,
+                            elem_classes="mb-2"
                         )
+                        
                         out_local = gr.Textbox(
-                            label="Translated Caption",
+                            label="🌏 Translated Caption",
                             lines=3,
                             interactive=False,
-                            show_copy_button=True
+                            show_copy_button=True,
+                            elem_classes="mb-2"
                         )
+                        
                         out_tags = gr.Textbox(
-                            label="Suggested Hashtags",
+                            label="🏷️ Suggested Hashtags",
                             lines=2,
                             interactive=False,
-                            show_copy_button=True
+                            show_copy_button=True,
+                            elem_classes="mb-2"
                         )
-
+                    
+                    gr.HTML('<div class="section-divider"></div>')
+                    
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### 🔬 Model Analysis")
+                        
                         comparison_out = gr.Textbox(
-                            label="Model Comparison (ESN vs GRU)",
+                            label="⚖️ Model Comparison (ESN vs GRU)",
                             lines=2,
-                            interactive=False
+                            interactive=False,
+                            elem_classes="mb-2"
                         )
+                        
                         reasoning_out = gr.Textbox(
-                            label="Reasoning Trace",
+                            label="🧩 Reasoning Trace",
                             lines=3,
                             interactive=False
                         )
-
+                    
+                    gr.HTML('<div class="section-divider"></div>')
+                    
+                    with gr.Group(elem_classes="card"):
                         gr.Markdown("### 🔊 Audio Narration")
                         audio = gr.Audio(
                             type="filepath",
                             label="Listen to Caption"
                         )
-
-                        # ======= ADDED VISUAL ANALYTICS =======
+                    
+                    gr.HTML('<div class="section-divider"></div>')
+                    
+                    with gr.Group(elem_classes="card"):
                         gr.Markdown("### 📊 Cultural Signal Analysis")
                         cultural_signal_plot = gr.Plot(
-                            label="Cultural Signal Strength (ESN)"
+                            label="Cultural Signal Strength"
                         )
-
+                        
                         gr.Markdown("### 🏷️ Cultural Tag Cloud")
                         cultural_tag_cloud = gr.Textbox(
                             label="Detected Cultural Tags",
-                            interactive=False
+                            interactive=False,
+                            lines=2
                         )
-                        # ====================================
+            
+            # Advanced Analysis Accordions
+            with gr.Accordion("🔍 Advanced Analysis & Reports", open=False):
+                with gr.Row():
+                    with gr.Column():
+                        archive_index = gr.JSON(
+                            label="📑 Cultural Signal Index",
+                            elem_classes="card"
+                        )
+                        
+                        disagreement_view = gr.JSON(
+                            label="⚠️ Model Disagreement Analysis",
+                            elem_classes="card"
+                        )
+                    
+                    with gr.Column():
+                        surprise_json = gr.JSON(
+                            label="🎭 Cultural Surprise Detection",
+                            elem_classes="card"
+                        )
+                        
+                        silence_json = gr.JSON(
+                            label="🔇 Cultural Silence Detection",
+                            elem_classes="card"
+                        )
+                
+                with gr.Row():
+                    trust_json = gr.JSON(
+                        label="🛡️ Comprehensive Trust Report",
+                        elem_classes="card"
+                    )
+                    
+                    brain_json = gr.JSON(
+                        label="🧠 Model Brain Analysis",
+                        elem_classes="card"
+                    )
 
-            # -------- States
+            # States
             image_state = gr.State(None)
             context_state = gr.State(None)
             prediction_state = gr.State(None)
-            archive_index = gr.JSON(label="Cultural Signal Index")
-            disagreement_view = gr.JSON(label="Disagreement Analysis")
-            surprise_json = gr.JSON(label="Surprise Analysis")
-            silence_json = gr.JSON(label="Silence Analysis")
             signal_state = gr.State({})
 
-            # -------- Button wiring (FIXED)
+            # Button wiring
             btn.click(
                 fn=run_caption,
                 inputs=[img, lang, use_esn, compare_models],
                 outputs=[
-                    out_en,
-                    out_local,
-                    out_tags,
-                    audio,
-                    image_state,
-                    context_state,
-                    comparison_out,
-                    reasoning_out,
-                    prediction_state,
-                    cultural_signal_plot,
-                    cultural_tag_cloud,
-                    archive_index,
-                    signal_state,           # ← THIS
-                    disagreement_view,
-                    surprise_json,
-                    silence_json
+                    out_en, out_local, out_tags, audio, image_state,
+                    context_state, comparison_out, reasoning_out,
+                    prediction_state, cultural_signal_plot,
+                    cultural_tag_cloud, archive_index, signal_state,
+                    disagreement_view, surprise_json, silence_json,
+                    trust_json, brain_json
                 ]
             )
 
-        # =========================================================
-        # Q&A Chatbot
-        # =========================================================
-        with gr.Tab("Q&A Chatbot"):
+        # ═══════════════════════════════════════════════════════════════
+        # Q&A CHATBOT TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("💬 Q&A Chatbot"):
+            gr.HTML('<div class="card-header"><h3>🤖 Intelligent Image Q&A</h3></div>')
+            
             with gr.Row():
-                with gr.Column():
+                with gr.Column(scale=1):
                     original_media_qa = gr.Image(
-                        label="Uploaded Media",
+                        label="📸 Current Image",
                         interactive=False,
-                        height=200,
-                        type="filepath"
+                        height=280,
+                        type="filepath",
+                        elem_classes="card"
                     )
-                    chatbot = gr.Chatbot(label="Chat with the Image")
-                    text_input = gr.Textbox(label="Type your question")
+                
+                with gr.Column(scale=2):
+                    chatbot = gr.Chatbot(
+                        label="💭 Conversation",
+                        height=400,
+                        elem_classes="card"
+                    )
+            
+            with gr.Row():
+                with gr.Column(scale=3):
+                    text_input = gr.Textbox(
+                        label="💬 Type your question",
+                        placeholder="Ask me anything about the image...",
+                        lines=1
+                    )
+                
+                with gr.Column(scale=1):
                     mic_input = gr.Audio(
                         sources=["microphone"],
                         type="filepath",
-                        label="Or speak your question",
+                        label="🎤 Or speak",
                         format="wav"
                     )
+            
+            with gr.Row():
+                qa_btn = gr.Button(
+                    "📤 Send Question",
+                    variant="primary",
+                    elem_classes="primary"
+                )
+            
+            qa_audio = gr.Audio(
+                type="filepath",
+                label="🔊 Listen to Answer",
+                elem_classes="card"
+            )
 
-                    qa_btn = gr.Button("Send")
+            qa_btn.click(
+                fn=process_qa,
+                inputs=[text_input, mic_input, chatbot, image_state, context_state],
+                outputs=[chatbot, qa_audio, original_media_qa]
+            )
 
-                    qa_audio = gr.Audio(
-                        type="filepath",
-                        label="Listen to Answer"
-                    )
-
-                    qa_btn.click(
-                        fn=process_qa,
-                        inputs=[
-                            text_input,
-                            mic_input,
-                            chatbot,
-                            image_state,
-                            context_state
-                        ],
-                        outputs=[
-                            chatbot,
-                            qa_audio,
-                            original_media_qa
-                        ]
-                    )
-
-        # =========================================================
-        # Cultural Memory (RAG)
-        # =========================================================
-        with gr.Tab("Cultural Memory (RAG)"):
+        # ═══════════════════════════════════════════════════════════════
+        # CULTURAL MEMORY (RAG) TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("🏛️ Cultural Memory"):
+            gr.HTML('<div class="card-header"><h3>🌟 Cultural Facts & Storytelling</h3></div>')
+            
             with gr.Row():
                 with gr.Column():
-                    gr.Markdown("### 🌟 Cultural Facts & Story")
-                    cultural_facts = gr.Markdown()
-                    cultural_story = gr.Textbox(
-                        label="Cultural Story",
-                        lines=5
-                    )
-                    cultural_refs = gr.Textbox(
-                        label="Sources / Knowledge",
-                        lines=3
-                    )
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### 📚 Accumulated Cultural Knowledge")
+                        cultural_facts = gr.Markdown()
+                    
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### 📖 Generated Cultural Story")
+                        cultural_story = gr.Textbox(
+                            label="Cultural Narrative",
+                            lines=6,
+                            interactive=False
+                        )
+                    
+                    with gr.Group(elem_classes="card"):
+                        cultural_refs = gr.Textbox(
+                            label="🔗 Sources & Knowledge Base",
+                            lines=2,
+                            interactive=False
+                        )
 
-            refresh_rag = gr.Button("Generate Cultural Memory")
+            refresh_rag = gr.Button(
+                "🔄 Generate Cultural Memory",
+                variant="primary",
+                elem_classes="primary"
+            )
 
             refresh_rag.click(
                 fn=cultural_rag,
-                inputs=[
-                    prediction_state,
-                    context_state,
-                    gr.State("India-wide")
-                ],
-                outputs=[
-                    cultural_facts,
-                    cultural_story,
-                    cultural_refs
-                ]
+                inputs=[prediction_state, context_state, gr.State("India-wide")],
+                outputs=[cultural_facts, cultural_story, cultural_refs]
             )
 
-        # =========================================================
-        # Trust & Safety
-        # =========================================================
-        with gr.Tab("Trust & Safety"):
+        # ═══════════════════════════════════════════════════════════════
+        # TRUST & SAFETY TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("🛡️ Trust & Safety"):
+            gr.HTML('<div class="card-header"><h3>📊 Comprehensive Safety Analysis</h3></div>')
+            
             with gr.Row():
-                bias_score = gr.Slider(0, 1, label="Cultural Hallucination Risk")
-                vision_score = gr.Slider(0, 1, label="Vision-Text Consistency")
-                cultural_conf = gr.Slider(0, 1, label="Cultural Confidence")
-
-            safety_btn = gr.Button("Compute Safety Metrics")
+                with gr.Column():
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### 🎯 Safety Metrics")
+                        bias_score = gr.Slider(
+                            0, 1,
+                            label="⚠️ Hallucination Risk",
+                            interactive=False
+                        )
+                        vision_score = gr.Slider(
+                            0, 1,
+                            label="👁️ Vision-Text Consistency",
+                            interactive=False
+                        )
+                        cultural_conf = gr.Slider(
+                            0, 1,
+                            label="🎭 Cultural Confidence",
+                            interactive=False
+                        )
+                    
+                    safety_btn = gr.Button(
+                        "🔍 Compute Safety Metrics",
+                        variant="primary",
+                        elem_classes="primary"
+                    )
+                
+                with gr.Column():
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### 📋 Detailed Trust Analysis")
+                        trust_report_view = gr.JSON(
+                            label="Complete Trust Report"
+                        )
 
             safety_btn.click(
                 fn=safety_metrics,
-                inputs=[
-                    prediction_state
-                ],
-                outputs=[
-                    bias_score,
-                    vision_score,
-                    cultural_conf
-                ]
+                inputs=[prediction_state],
+                outputs=[bias_score, vision_score, cultural_conf, trust_report_view]
             )
 
-        # =========================================================
-        # Model Brain
-        # =========================================================
-        with gr.Tab("Model Brain"):
+        # ═══════════════════════════════════════════════════════════════
+        # MODEL BRAIN TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("🧠 Model Brain"):
+            gr.HTML('<div class="card-header"><h3>🔬 Neural Network Interpretability</h3></div>')
+            
             with gr.Row():
-                esn_state = gr.Textbox(
-                    label="ESN Cultural Activation",
-                    lines=5
-                )
-                gru_state = gr.Textbox(
-                    label="GRU Activation",
-                    lines=5
-                )
-                trigger_words = gr.Textbox(
-                    label="Cultural Triggers",
-                    lines=3
-                )
+                with gr.Column():
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### 🌊 ESN (Echo State Network)")
+                        esn_state = gr.Textbox(
+                            label="ESN Cultural Activation",
+                            lines=6,
+                            interactive=False
+                        )
+                    
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### ⚡ GRU (Gated Recurrent Unit)")
+                        gru_state = gr.Textbox(
+                            label="GRU Activation",
+                            lines=6,
+                            interactive=False
+                        )
+                
+                with gr.Column():
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### 🧩 Cognitive Interpretation")
+                        trigger_words = gr.Textbox(
+                            label="What Triggered the Models?",
+                            lines=5,
+                            interactive=False
+                        )
+                    
+                    with gr.Group(elem_classes="card"):
+                        brain_report_view = gr.JSON(
+                            label="📊 Detailed Brain Analysis"
+                        )
 
-            brain_btn = gr.Button("Show Model Brain")
+            brain_btn = gr.Button(
+                "🔍 Analyze Model Cognition",
+                variant="primary",
+                elem_classes="primary"
+            )
 
             brain_btn.click(
-                fn=model_brain,
-                inputs=[prediction_state],
-                outputs=[
-                    esn_state,
-                    gru_state,
-                    trigger_words
-                ]
+                fn=lambda r, c: model_brain(r, c),
+                inputs=[prediction_state, context_state],
+                outputs=[esn_state, gru_state, trigger_words, brain_report_view]
             )
 
-        with gr.Tab("Cultural Evolution"):
-            gr.Markdown("### ⏳ Cultural Signal Evolution Over Time")
-
-            evolution_plot = gr.Plot()
-            evolution_btn = gr.Button("Animate Cultural Evolution")
+        # ═══════════════════════════════════════════════════════════════
+        # CULTURAL EVOLUTION TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("⏳ Cultural Evolution"):
+            gr.HTML('<div class="card-header"><h3>📈 Temporal Signal Analysis</h3></div>')
+            
+            with gr.Group(elem_classes="card"):
+                gr.Markdown("""
+                ### 🌱 Cultural Signal Evolution Over Time
+                Track how cultural signals change and develop across your generated captions.
+                """)
+                
+                evolution_plot = gr.Plot(label="Evolution Timeline")
+                
+                evolution_btn = gr.Button(
+                    "🎬 Animate Cultural Evolution",
+                    variant="primary",
+                    elem_classes="primary"
+                )
 
             evolution_btn.click(
                 fn=lambda p: generate_heritage_evolution_snapshot(extract_mode_from_prediction(p)),
@@ -1524,45 +2209,52 @@ with gr.Blocks(
                 outputs=evolution_plot
             )
 
-        # =========================================================
-        # Regional Culture
-        # =========================================================
-        with gr.Tab("Regional Culture"):
+        # ═══════════════════════════════════════════════════════════════
+        # REGIONAL CULTURE TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("🌍 Regional Culture"):
+            gr.HTML('<div class="card-header"><h3>🗺️ Cultural Adaptation Engine</h3></div>')
+            
             with gr.Row():
                 with gr.Column():
-                    gr.Markdown("### Original Caption")
-                    original_reg = gr.Textbox(
-                        label="Original (as generated)",
-                        lines=4,
-                        interactive=False,
-                        value="Generate a caption first →"
-                    )
-
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### 📝 Original Caption")
+                        original_reg = gr.Textbox(
+                            label="As Generated",
+                            lines=4,
+                            interactive=False,
+                            value="Generate a caption first →"
+                        )
+                
                 with gr.Column():
-                    gr.Markdown("### Adapted to Selected Culture")
-                    regional_caption = gr.Textbox(
-                        label="Adapted version",
-                        lines=6,
-                        interactive=False
-                    )
-
+                    with gr.Group(elem_classes="card"):
+                        gr.Markdown("### 🎨 Culturally Adapted")
+                        regional_caption = gr.Textbox(
+                            label="Adapted Version",
+                            lines=6,
+                            interactive=False
+                        )
+            
             with gr.Row():
-                region = gr.Dropdown(
-                    choices=[
-                        "Japan", "Italy", "Mexico", "France", "Thailand", "Morocco",
-                        "Brazil", "Korea", "Turkey", "Lebanon", "Ethiopia", "Vietnam",
-                        "Peru", "Greece", "Spain", "Nigeria", "Indonesia", "Sweden",
-                        "United States (Southern)",
-                        "United States (New York style)",
-                        "Generic international fusion"
-                    ],
-                    label="Select Target Culture / Country",
-                    value="Japan"
-                )
-                regional_btn = gr.Button(
-                    "Adapt to This Culture",
-                    variant="primary"
-                )
+                with gr.Column(scale=2):
+                    region = gr.Dropdown(
+                        choices=[
+                            "Japan", "Italy", "Mexico", "France", "Thailand", "Morocco",
+                            "Brazil", "Korea", "Turkey", "Lebanon", "Ethiopia", "Vietnam",
+                            "Peru", "Greece", "Spain", "Nigeria", "Indonesia", "Sweden",
+                            "United States (Southern)", "United States (New York style)",
+                            "Generic international fusion"
+                        ],
+                        label="🌏 Select Target Culture",
+                        value="Japan"
+                    )
+                
+                with gr.Column(scale=1):
+                    regional_btn = gr.Button(
+                        "🔄 Adapt to Culture",
+                        variant="primary",
+                        elem_classes="primary"
+                    )
 
             regional_btn.click(
                 fn=lambda cap, cult: (cap, regional_adapt(cap, cult)),
@@ -1570,61 +2262,94 @@ with gr.Blocks(
                 outputs=[original_reg, regional_caption]
             )
 
-        # with gr.Tab("🧠 Model Cognition (3D)"):
-        #     gr.Markdown("### ESN & GRU Internal Cognition Space")
-
-        #     gr.HTML("""
-        #     <iframe src="/file=static/esn_evolution.html" width="100%" height="520"></iframe>
-        #     <iframe src="/file=static/esn_vs_gru.html" width="100%" height="520"></iframe>
-        #     <iframe src="/file=static/counterfactual_drift.html" width="100%" height="520"></iframe>
-        #     """)
-
-        # =========================================================
-        # Accessibility
-        # =========================================================
-        with gr.Tab("Accessibility"):
-            with gr.Row():
+        # ═══════════════════════════════════════════════════════════════
+        # ACCESSIBILITY TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("♿ Accessibility"):
+            gr.HTML('<div class="card-header"><h3>👁️ Screen Reader Optimization</h3></div>')
+            
+            with gr.Group(elem_classes="card"):
+                gr.Markdown("""
+                ### 📖 Enhanced Accessibility Description
+                Optimized for screen readers and assistive technologies.
+                """)
+                
                 blind_caption = gr.Textbox(
-                    label="Screen Reader Friendly Description",
-                    lines=5
+                    label="Detailed Description",
+                    lines=7,
+                    interactive=False
                 )
+                
                 blind_audio = gr.Audio(
-                    label="Audio Narration for Blind Users"
+                    label="🔊 Audio Narration",
+                    type="filepath"
                 )
 
-            accessibility_btn = gr.Button("Generate Accessibility Mode")
+            accessibility_btn = gr.Button(
+                "♿ Generate Accessibility Mode",
+                variant="primary",
+                elem_classes="primary"
+            )
 
             accessibility_btn.click(
                 fn=accessibility_description,
                 inputs=context_state,
                 outputs=[blind_caption, blind_audio]
             )
+
+        # ═══════════════════════════════════════════════════════════════
+        # HERITAGE MAP TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("🗺️ Heritage Map"):
+            gr.HTML('<div class="card-header"><h3>🌐 Cultural Heritage Network</h3></div>')
             
-        # Cultural Heritage Map
-        # =========================================================
-        with gr.Tab("Cultural Heritage Map"):
-            with gr.Row():
+            with gr.Group(elem_classes="card"):
+                gr.Markdown("""
+                ### 🕸️ Signal Connection Graph
+                Visualize how cultural signals relate to each other across your generated content.
+                """)
+                
                 heritage_graph = gr.Plot(
-                    label="Heritage Graph Visualization"
+                    label="Heritage Network Visualization"
                 )
+                
                 heritage_out = gr.JSON(
-                    label="Heritage Data"
+                    label="📊 Network Statistics"
                 )
 
-            map_btn = gr.Button("Generate Heritage Map")
+            map_btn = gr.Button(
+                "🗺️ Generate Heritage Map",
+                variant="primary",
+                elem_classes="primary"
+            )
 
             map_btn.click(
                 fn=lambda _, p: generate_heritage_graph(_, extract_mode_from_prediction(p)),
                 inputs=[context_state, prediction_state],
                 outputs=[heritage_graph, heritage_out]
             )
-    
-        with gr.Tab("What-If Cultural Frame"):
-            frame = gr.Dropdown(
-                choices=list(COUNTERFACTUAL_FRAMES.keys()),
-                label="Re-interpret cultural memory"
-            )
-            cf_out = gr.JSON(label="Counterfactual Interpretation")
+
+        # ═══════════════════════════════════════════════════════════════
+        # WHAT-IF CULTURAL FRAME TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("🔮 What-If Analysis"):
+            gr.HTML('<div class="card-header"><h3>🎭 Counterfactual Cultural Frames</h3></div>')
+            
+            with gr.Group(elem_classes="card"):
+                gr.Markdown("""
+                ### 🌀 Re-interpret Through Different Lenses
+                See how cultural signals would shift in alternative contexts.
+                """)
+                
+                frame = gr.Dropdown(
+                    choices=list(COUNTERFACTUAL_FRAMES.keys()),
+                    label="🎬 Select Cultural Frame",
+                    value=list(COUNTERFACTUAL_FRAMES.keys())[0] if COUNTERFACTUAL_FRAMES else None
+                )
+                
+                cf_out = gr.JSON(
+                    label="🔄 Counterfactual Interpretation"
+                )
 
             frame.change(
                 fn=lambda s, f: counterfactual_from_vector(s, f),
@@ -1632,26 +2357,47 @@ with gr.Blocks(
                 outputs=cf_out
             )
 
-        # =========================================================
-        # Similar Images
-        # =========================================================
-        with gr.Tab("Similar Images"):
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("### 🔍 Find Similar Images Online")
-                    similar_gallery = gr.Gallery(
-                        label="Similar Images",
-                        columns=4,
-                        height="auto",
-                        object_fit="contain"
-                    )
-                    refresh_btn = gr.Button("Refresh Similar Images")
+        # ═══════════════════════════════════════════════════════════════
+        # SIMILAR IMAGES TAB
+        # ═══════════════════════════════════════════════════════════════
+        with gr.Tab("🖼️ Similar Images"):
+            gr.HTML('<div class="card-header"><h3>🔍 Visual Discovery</h3></div>')
+            
+            with gr.Group(elem_classes="card"):
+                gr.Markdown("""
+                ### 🌐 Find Similar Images Online
+                Powered by Pexels API - Discover visually similar content.
+                """)
+                
+                similar_gallery = gr.Gallery(
+                    label="Similar Images",
+                    columns=4,
+                    height="auto",
+                    object_fit="contain",
+                    elem_classes="card"
+                )
+                
+                refresh_btn = gr.Button(
+                    "🔄 Refresh Similar Images",
+                    variant="primary",
+                    elem_classes="primary"
+                )
 
             refresh_btn.click(
                 fn=search_similar_images,
                 inputs=context_state,
                 outputs=similar_gallery
             )
+
+    # Footer
+    gr.HTML("""
+    <div style="text-align: center; padding: 2rem 0 1rem 0; color: #7F8C8D; font-size: 0.9rem;">
+        <p>Cultural AI Explorer • v2.0</p>
+        <p style="font-size: 0.8rem; margin-top: 0.5rem;">
+            Powered by ESN/GRU • Ollama • SQLite • Pexels API
+        </p>
+    </div>
+    """)
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, share=True)
