@@ -54,7 +54,7 @@ def load_minicpm():
         _minicpm_processor = AutoProcessor.from_pretrained("openbmb/MiniCPM-V-2_6", trust_remote_code=True)
         _minicpm_model = AutoModelForCausalLM.from_pretrained(
             "openbmb/MiniCPM-V-2_6",
-            torch_dtype=torch.float16,
+            torch_dtype=torch.float32,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
             device_map="cpu"
@@ -74,6 +74,7 @@ def generate_base_caption(path: str) -> str:
 
     img = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(img)
+    pil_img = pil_img.resize((512, 512))
 
     task_prompt = "<DETAILED_CAPTION>"
     inputs = processor(text=task_prompt, images=pil_img, return_tensors="pt").to(DEVICE)
@@ -128,9 +129,9 @@ def generate_vqa_answer(image_path: str, question: str) -> str:
                 msgs=msgs,
                 tokenizer=processor.tokenizer,
                 sampling=True,
-                temperature=0.75,
-                top_p=0.9,
-                max_tokens=140,
+                temperature=0.6,
+                top_p=0.85,
+                max_tokens=120,
                 repetition_penalty=1.05
             )
         answer = res.strip().capitalize()

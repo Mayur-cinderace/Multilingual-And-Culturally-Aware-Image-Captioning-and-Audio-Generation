@@ -31,14 +31,19 @@ def naturalize_translation(text: str, language: str) -> str:
 
     tok, model = load_translation_refiner()
 
-    prompt = (
-        f"You are a native speaker of {language}.\n"
-        f"Rewrite the following sentence so it sounds natural and fluent.\n"
-        f"Keep the meaning exactly the same.\n"
-        f"Use one sentence only.\n\n"
-        f"Sentence:\n{text}\n\n"
-        f"Natural sentence:"
-    )
+    prompt = f"""
+        RULES (STRICT):
+        - Output ONLY the rewritten sentence.
+        - Do NOT add explanations, labels, or extra text.
+        - Keep the meaning exactly the same.
+        - Use ONE sentence only.
+        - Sound natural and fluent in {language}.
+        - Do not add cultural or stylistic commentary.
+
+        Text to rewrite:
+        {text}
+        """
+
 
     inputs = tok(
         prompt,

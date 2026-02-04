@@ -1,0 +1,514 @@
+<!-- viz_server/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cultural AI · Neural Introspection</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+      color: #e8edf4;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    /* ========== HEADER ========== */
+    .header {
+      text-align: center;
+      margin-bottom: 60px;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+      border-radius: 24px;
+      border: 1px solid rgba(139, 92, 246, 0.2);
+    }
+
+    .header h1 {
+      font-size: 48px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header .subtitle {
+      font-size: 18px;
+      color: #8b93b0;
+      font-weight: 400;
+      margin-bottom: 24px;
+    }
+
+    .header .description {
+      max-width: 700px;
+      margin: 0 auto;
+      color: #c1c7d9;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    /* ========== NAVIGATION TABS ========== */
+    .nav-tabs {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 40px;
+      padding: 8px;
+      background: rgba(20, 27, 61, 0.5);
+      border-radius: 16px;
+      overflow-x: auto;
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      flex-wrap: wrap;
+    }
+
+    .nav-tab {
+      padding: 12px 24px;
+      background: transparent;
+      color: #8b93b0;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .nav-tab:hover {
+      background: rgba(59, 130, 246, 0.1);
+      color: #3b82f6;
+    }
+
+    .nav-tab.active {
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    /* Section headers */
+    .section-header {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f59e0b;
+      padding: 8px 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* ========== VISUALIZATION CARDS ========== */
+    .viz-section {
+      display: none;
+      animation: fadeIn 0.4s ease;
+    }
+
+    .viz-section.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .card {
+      background: rgba(20, 27, 61, 0.6);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 32px;
+      margin-bottom: 32px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(59, 130, 246, 0.2);
+    }
+
+    .card-header {
+      margin-bottom: 24px;
+    }
+
+    .card-header h2 {
+      font-size: 28px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .card-header .description {
+      color: #8b93b0;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .card-content {
+      background: #0a0e27;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(30, 39, 73, 0.8);
+    }
+
+    iframe {
+      width: 100%;
+      height: 700px;
+      border: none;
+      display: block;
+    }
+
+    /* ========== INFO BADGES ========== */
+    .info-badges {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .badge {
+      padding: 6px 14px;
+      background: rgba(59, 130, 246, 0.1);
+      color: #3b82f6;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .badge.purple {
+      background: rgba(139, 92, 246, 0.1);
+      color: #8b5cf6;
+      border-color: rgba(139, 92, 246, 0.3);
+    }
+
+    .badge.amber {
+      background: rgba(245, 158, 11, 0.1);
+      color: #f59e0b;
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    /* ========== FOOTER ========== */
+    .footer {
+      text-align: center;
+      padding: 40px 20px;
+      margin-top: 60px;
+      color: #8b93b0;
+      font-size: 14px;
+      border-top: 1px solid rgba(139, 92, 246, 0.2);
+    }
+
+    /* ========== RESPONSIVE ========== */
+    @media (max-width: 768px) {
+      .header h1 {
+        font-size: 36px;
+      }
+
+      .card {
+        padding: 20px;
+      }
+
+      iframe {
+        height: 500px;
+      }
+
+      .nav-tabs {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+    <!-- HEADER -->
+    <div class="header">
+      <h1>🧠 Cultural AI Introspection</h1>
+      <p class="subtitle">Explainable Neural Dynamics · 2D + 3D Reservoir Visualization</p>
+      <p class="description">
+        Explore how ESN and GRU neural architectures process and understand cultural context.
+        From 2D temporal patterns to 3D reservoir networks showing actual neural flow.
+      </p>
+    </div>
+
+    <!-- NAVIGATION -->
+    <div class="nav-tabs">
+      <span class="section-header">2D Analysis</span>
+      <button class="nav-tab active" data-section="activation">📊 Activation Flow</button>
+      <button class="nav-tab" data-section="importance">🎯 Feature Importance</button>
+      <button class="nav-tab" data-section="dimensions">🗺️ Cultural Space</button>
+      <button class="nav-tab" data-section="counterfactual">🔄 Counterfactual</button>
+      <button class="nav-tab" data-section="convergence">📈 Convergence</button>
+
+      <span class="section-header">3D Dynamics</span>
+      <button class="nav-tab" data-section="reservoir3d">🕸️ Reservoir Network</button>
+      <button class="nav-tab" data-section="trajectory3d">🛤️ Processing Trajectory</button>
+      <button class="nav-tab" data-section="injection3d">💉 Context Injection</button>
+      <button class="nav-tab" data-section="animated">🎬 Evolution (Animated)</button>
+    </div>
+
+    <!-- ==================== 2D VISUALIZATIONS ==================== -->
+
+    <!-- VISUALIZATION 1: Activation Flow -->
+    <div class="viz-section active" id="activation">
+      <div class="card">
+        <div class="card-header">
+          <h2>Activation Flow Over Time</h2>
+          <p class="description">
+            Heatmap showing which neurons activate as the model processes cultural context.
+            Each row represents a specific neuron, revealing temporal patterns in cultural understanding.
+          </p>
+          <div class="info-badges">
+            <span class="badge">Temporal Dynamics</span>
+            <span class="badge purple">ESN Architecture</span>
+            <span class="badge amber">Top 50 Neurons</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <iframe src="static/activation_flow.html"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISUALIZATION 2: Feature Importance -->
+    <div class="viz-section" id="importance">
+      <div class="card">
+        <div class="card-header">
+          <h2>Feature Importance Comparison</h2>
+          <p class="description">
+            Side-by-side comparison showing what each architecture pays attention to.
+            ESN uses distributed memory, while GRU compresses into fewer activations.
+          </p>
+          <div class="info-badges">
+            <span class="badge">Model Comparison</span>
+            <span class="badge purple">Top 20 Features</span>
+            <span class="badge amber">Attention Patterns</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <iframe src="static/feature_importance.html"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISUALIZATION 3: Cultural Dimensions -->
+    <div class="viz-section" id="dimensions">
+      <div class="card">
+        <div class="card-header">
+          <h2>Cultural Semantic Space</h2>
+          <p class="description">
+            2D projection showing how different cultural contexts cluster in the model's understanding.
+            Size and color indicate the intensity of cultural activation.
+          </p>
+          <div class="info-badges">
+            <span class="badge">t-SNE Projection</span>
+            <span class="badge purple">Semantic Clustering</span>
+            <span class="badge amber">Cultural Intensity</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <iframe src="static/cultural_space.html"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISUALIZATION 4: Counterfactual -->
+    <div class="viz-section" id="counterfactual">
+      <div class="card">
+        <div class="card-header">
+          <h2>Counterfactual Cultural Analysis</h2>
+          <p class="description">
+            Radar chart revealing how interpretation shifts across different cultural frames.
+            Compare baseline against alternative framings.
+          </p>
+          <div class="info-badges">
+            <span class="badge">Interpretable Dimensions</span>
+            <span class="badge purple">Cultural Frames</span>
+            <span class="badge amber">Delta Analysis</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <iframe src="static/counterfactual.html"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISUALIZATION 5: Convergence -->
+    <div class="viz-section" id="convergence">
+      <div class="card">
+        <div class="card-header">
+          <h2>Convergence Dynamics</h2>
+          <p class="description">
+            Three metrics tracking how the model's interpretation stabilizes over processing steps.
+            Magnitude, change, and entropy reveal the settling behavior.
+          </p>
+          <div class="info-badges">
+            <span class="badge">Stability Analysis</span>
+            <span class="badge purple">Recurrent Dynamics</span>
+            <span class="badge amber">50 Steps</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <iframe src="static/convergence.html"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 3D VISUALIZATIONS ==================== -->
+
+    <!-- VISUALIZATION 6: 3D Reservoir Network -->
+    <div class="viz-section" id="reservoir3d">
+      <div class="card">
+        <div class="card-header">
+          <h2>3D ESN Reservoir Network</h2>
+          <p class="description">
+            Interactive 3D network visualization showing the actual reservoir structure.
+            Neurons are nodes, connections are edges, height represents activation strength.
+            <strong>Rotate, zoom, and explore!</strong>
+          </p>
+          <div class="info-badges">
+            <span class="badge">3D Network Graph</span>
+            <span class="badge purple">100 Sample Neurons</span>
+            <span class="badge amber">Reservoir Computing</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <iframe src="static/esn_reservoir_3d.html"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISUALIZATION 7: 3D Trajectory -->
+    <div class="viz-section" id="trajectory3d">
+      <div class="card">
+        <div class="card-header">
+          <h2>3D Processing Trajectory</h2>
+          <p class="description">
+            Watch how ESN and GRU navigate through semantic space over time.
+            Two different paths to the same cultural understanding.
+            Lines show the processing journey from input to final classification.
+          </p>
+          <div class="info-badges">
+            <span class="badge">ESN vs GRU Paths</span>
+            <span class="badge purple">PCA 3D Projection</span>
+            <span class="badge amber">20 Processing Steps</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <iframe src="static/cultural_trajectory_3d.html"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISUALIZATION 8: 3D Context Injection -->
+    <div class="viz-section" id="injection3d">
+      <div class="card">
+        <div class="card-header">
+          <h2>3D Cultural Context Injection</h2>
+          <p class="description">
+            See the complete data flow: Input → Reservoir/Hidden → Classification.
+            Left side shows ESN's distributed processing, right shows GRU's compressed pathway.
+            This is how cultural meaning flows through the neural network.
+          </p>
+          <div class="info-badges">
+            <span class="badge">Data Flow Visualization</span>
+            <span class="badge purple">Side-by-Side</span>
+            <span class="badge amber">Input to Output</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <iframe src="static/cultural_injection_3d.html"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISUALIZATION 9: Animated Evolution -->
+    <div class="viz-section" id="animated">
+      <div class="card">
+        <div class="card-header">
+          <h2>Animated Reservoir Evolution</h2>
+          <p class="description">
+            <strong>Press PLAY to watch!</strong> See how the reservoir state evolves frame-by-frame.
+            Each neuron's position and color shows its activation. Watch cultural understanding emerge over time.
+            Use the slider to scrub through processing steps.
+          </p>
+          <div class="info-badges">
+            <span class="badge">Animated 3D</span>
+            <span class="badge purple">20 Frames</span>
+            <span class="badge amber">Interactive Timeline</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <iframe src="static/reservoir_evolution_animated.html"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <p>Cultural AI Model Introspection · Research-Grade Explainability</p>
+      <p style="margin-top: 8px; font-size: 13px;">
+        Echo State Networks & Gated Recurrent Units · 2D + 3D Visualization
+      </p>
+    </div>
+
+  </div>
+
+  <script>
+    // Tab switching
+    const tabs = document.querySelectorAll('.nav-tab');
+    const sections = document.querySelectorAll('.viz-section');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        // Remove active class from all tabs and sections
+        tabs.forEach(t => t.classList.remove('active'));
+        sections.forEach(s => s.classList.remove('active'));
+
+        // Add active class to clicked tab
+        tab.classList.add('active');
+
+        // Show corresponding section
+        const sectionId = tab.getAttribute('data-section');
+        document.getElementById(sectionId).classList.add('active');
+
+        // Smooth scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+  </script>
+
+</body>
+
+</html>

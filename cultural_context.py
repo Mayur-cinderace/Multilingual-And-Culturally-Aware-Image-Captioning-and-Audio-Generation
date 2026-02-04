@@ -63,14 +63,17 @@ class EnhancedESNCulturalController:
         has_adjective = sum(1 for w in tokens if w.endswith("ing") or w.endswith("ed")) / max(n_tokens, 1)  # Descriptive richness
         uniqueness    = len(set(tokens)) / max(n_tokens, 1)  # Vocabulary diversity
         sentiment     = sum(1 for w in ["delicious","aromatic","rich","flavorful","tasty","yummy"] if w in text) / 3.0  # Positive food sentiment
-
-        return np.array([
+        features = np.array([
             length_score, spice_score, ritual_score, daily_score, heritage_score,
             color_score, texture_score, serving_score, has_thali, has_festival,
             has_sweet, has_rice, has_veg, has_meat, has_dessert, has_beverage,
             has_offering, has_decoration, has_people, has_utensil,
-            has_adjective, uniqueness, sentiment, 1.0, 0.15, 0.05, 0.1, 0.2  # biases + constants
+            has_adjective, uniqueness, sentiment, 1.0, 0.15, 0.05, 0.1, 0.2
         ], dtype=np.float32)
+
+        features = np.clip(features, 0.0, 1.5)
+        return features
+
 
     def predict_mode(self, caption: str) -> Tuple[str, float]:
         if self.W_out is None:
@@ -88,6 +91,9 @@ class EnhancedESNCulturalController:
             self.state = (1 - self.leak_rate) * self.state + self.leak_rate * new_state
 
         logits = self.W_out @ self.state
+        temperature = 1.3
+        logits = logits / temperature
+
         probs = np.exp(logits - np.max(logits)) / (np.sum(np.exp(logits - np.max(logits))) + 1e-12)
         idx = int(np.argmax(probs))
         confidence = float(probs[idx])
@@ -99,6 +105,7 @@ class EnhancedESNCulturalController:
         self.state.fill(0.0)
 
         for caption, _ in samples:
+            self.state.fill(0.0)
             x = self.extract_features(caption)
             for t in range(5):  # Matching predict warm-up
                 input_drive = self.Win @ x
@@ -107,7 +114,9 @@ class EnhancedESNCulturalController:
                 noise = np.random.randn(self.reservoir_size) * 0.005
                 new_state = np.tanh(update + noise)
                 self.state = (1 - self.leak_rate) * self.state + self.leak_rate * new_state
-            states.append(self.state.copy())
+            activation_strength = np.linalg.norm(self.state)
+            states.append(self.state.copy() * activation_strength)
+
 
         states = np.array(states)
         targets = np.zeros((len(samples), len(self.modes)))
@@ -118,6 +127,18 @@ class EnhancedESNCulturalController:
         I = np.eye(self.reservoir_size)
         self.W_out = np.linalg.solve(states.T @ states + ridge_alpha * I, states.T @ targets).T
         print(f"Enhanced ESN trained – W_out shape: {self.W_out.shape}")
+
+    def get_reservoir_snapshot(self):
+        """
+        Returns:
+        - state: (N,)
+        - connectivity: sparse adjacency list
+        """
+        return {
+            "state": self.state.copy(),
+            "W": self.W.copy()
+        }
+        
 
 
 class EnhancedGRUCulturalController(nn.Module):
@@ -138,6 +159,16 @@ class EnhancedGRUCulturalController(nn.Module):
         text = " " + caption.lower() + " "
         tokens = re.findall(r"\w+", text)
         n_tokens = len(tokens)
+        non_food_score = sum(
+        text.count(w) for w in [
+                "classroom", "school", "college", "students",
+                "teacher", "exam", "election", "polling",
+                "vote", "ballot", "office", "meeting",
+                "books", "papers", "documents", "podium"
+            ]
+        )
+
+        non_food_score = min(non_food_score / 3.0, 2.0)
 
         length_score   = min(n_tokens / 30.0, 1.3)
         spice_score    = min(sum(text.count(w) for w in ["masala","curry","tikka","biryani","paneer","dal","chutney","garam","spicy","tandoori","korma","vindaloo"]) / 6.0, 1.6)
@@ -164,6 +195,10 @@ class EnhancedGRUCulturalController(nn.Module):
         has_adjective = sum(1 for w in tokens if w.endswith("ing") or w.endswith("ed")) / max(n_tokens, 1)
         uniqueness    = len(set(tokens)) / max(n_tokens, 1)
         sentiment     = sum(1 for w in ["delicious","aromatic","rich","flavorful","tasty","yummy"] if w in text) / 3.0
+        spice_score    -= 0.6 * non_food_score
+        serving_score  -= 0.7 * non_food_score
+        has_beverage   -= 0.5 * non_food_score
+        has_people     -= 0.3 * non_food_score
 
         features = [
             length_score, spice_score, ritual_score, daily_score, heritage_score,
@@ -172,8 +207,8 @@ class EnhancedGRUCulturalController(nn.Module):
             has_offering, has_decoration, has_people, has_utensil,
             has_adjective, uniqueness, sentiment, 1.0, 0.15, 0.05, 0.1, 0.2
         ]
-
-        return torch.tensor(features, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # Shape: (1, 1, input_size)
+        features = torch.clamp(torch.tensor(features, dtype=torch.float32), 0.0, 1.5)
+        return features.unsqueeze(0).unsqueeze(0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         output, _ = self.gru(x)
@@ -190,21 +225,42 @@ class EnhancedGRUCulturalController(nn.Module):
         confidence = float(probs[idx])
         return self.modes[idx], confidence
 
-    def train_model(self, samples: List[Tuple[str, str]], epochs=25, lr=0.005):
+    def train_model(self, samples: List[Tuple[str, str]], epochs=100, lr=0.005):
         optimizer = optim.Adam(self.parameters(), lr=lr)
-        criterion = nn.CrossEntropyLoss()
-        targets = torch.tensor([self.modes.index(mode) if mode in self.modes else 3 for _, mode in samples], dtype=torch.long)
+        class_weights = torch.tensor([1.2, 1.2, 1.1, 0.7])  # penalize generic dominance
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
+        # soft confusion encouragement
+        confusion_penalty = 0.1
 
         for epoch in range(epochs):
             total_loss = 0.0
-            features = torch.cat([self.extract_features(caption) for caption, _ in samples], dim=0)  # (N, 1, input_size)
+            perm = torch.randperm(len(samples))
+            samples_epoch = [samples[i] for i in perm]
+
+            features = torch.cat(
+                [self.extract_features(caption) for caption, _ in samples_epoch], dim=0
+            )
+
+            targets = torch.tensor(
+                [self.modes.index(mode) if mode in self.modes else 3
+                for _, mode in samples_epoch],
+                dtype=torch.long
+            )
 
             self.train()
             optimizer.zero_grad()
             logits = self.forward(features).squeeze(1)  # (N, output_size)
             loss = criterion(logits, targets)
+
+            entropy = -torch.sum(
+                torch.softmax(logits, dim=1) * torch.log_softmax(logits, dim=1),
+                dim=1
+            ).mean()
+
+            loss = loss - confusion_penalty * entropy
             loss.backward()
             optimizer.step()
+
 
             total_loss += loss.item()
 
@@ -223,7 +279,7 @@ class CulturalContextManager:
         print("Training Enhanced ESN...")
         self.esn.train(samples)
         print("\nTraining Enhanced GRU...")
-        self.gru.train_model(samples, epochs=20, lr=0.004)
+        self.gru.train_model(samples, epochs=100, lr=0.004)
 
     def predict(self, caption: str) -> Dict:
         esn_mode, esn_conf = self.esn.predict_mode(caption)
