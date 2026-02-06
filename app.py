@@ -1814,7 +1814,7 @@ with gr.Blocks(
         <div class="app-title">
             <h1>🧠 Cultural AI Explorer</h1>
             <p class="subtitle">Comprehensive Trust & Safety • Cultural Signal Analysis • Model Interpretability</p>
-            <span class="version-badge">Enhanced Edition v2.0</span>
+            <span class="version-badge">v2.0</span>
         </div>
     </div>
     """)
