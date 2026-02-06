@@ -410,19 +410,6 @@ add_cultural_entry(
 - [ ] Integration with more LLMs (Mistral, Llama 2, etc.)
 - [ ] Mobile deployment support
 
-## 📝 Citation
-
-If you use this system in your research, please cite:
-
-```bibtex
-@software{culturally_aware_captioning_2025,
-  title = {Multilingual and Culturally-Aware Image Captioning and Audio Generation},
-  author = {Your Name},
-  year = {2025},
-  url = {https://github.com/Mayur-cinderace/Multilingual-And-Culturally-Aware-Image-Captioning-and-Audio-Generation}
-}
-```
-
 ## 📄 License
 
 This project is licensed under the MIT License - see LICENSE file for details.
@@ -437,12 +424,6 @@ Contributions are welcome! Please:
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📧 Contact & Support
-
-- **Issues**: Open a GitHub issue for bugs and feature requests
-- **Discussions**: Use GitHub Discussions for general questions
-- **Email**: [Your contact information]
-
 ## 🙏 Acknowledgments
 
 - Florence-2 team for the vision model
@@ -452,5 +433,3 @@ Contributions are welcome! Please:
 - Google Translate API for multilingual support
 
 ---
-
-**Built with ❤️ for culturally-aware AI systems**
